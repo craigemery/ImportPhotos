@@ -27,6 +27,7 @@ import os
 import string
 import shutil
 import wx
+import threading
 
 class Importer:
     def __init__(self, logger, source_dir, dry_run):
@@ -147,13 +148,13 @@ class MyFrame(wx.Frame):
         self.control = wx.TextCtrl(self, style=wx.TE_MULTILINE)
         self.control.SetEditable(False)
         self.Show(True)
-        wx.CallAfter(self.do_import)
+        thr = threading.Thread(target=self.do_import)
+        thr.start()
 
     def do_import(self):
         Importer(self.logger, self.source_dir, self.opts.dry_run).go()
 
     def logger(self, s):
-        #print s
         self.control.AppendText("%s\n" % (s,))
 
 if __name__ == "__main__":
