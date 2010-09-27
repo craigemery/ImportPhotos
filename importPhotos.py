@@ -149,7 +149,7 @@ class MyFrame(wx.Frame):
         self.control.SetEditable(False)
         self.Show(True)
         thr = threading.Thread(target=self.do_import)
-        thr.start()
+        thr.start() # Should probably join this
 
     def do_import(self):
         Importer(self.logger, self.source_dir, self.opts.dry_run).go()
