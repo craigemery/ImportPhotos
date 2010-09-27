@@ -101,7 +101,7 @@ class Importer:
         self.__twiddle(0)
         for dirpath, dirnames, filenames in os.walk(self.source_dir):
             for fname in filenames:
-                self.frame.twiddle(1)
+                self.__twiddle(1)
                 base, suff = os.path.splitext(fname)
                 if suff.lower() in suffixes:
                     image_details.append((dirpath, base, suff, fname))
@@ -118,7 +118,9 @@ class Importer:
         image_count = len(image_details)
         date_count = 0
         self.__msg("Found %s image%s, now getting shot date info" % (image_count, ("" if image_count == 1 else "s")))
+        self.__twiddle(0)
         for dirpath, base, suff, fname in image_details:
+            self.__twiddle(1)
             gd = self.__get_date(dirpath, base, suff)
             if gd:
                 date_count += 1
@@ -127,6 +129,7 @@ class Importer:
                 l = images.get(key, [])
                 l.append([dirpath, fname])
                 images[key] = l
+        self.__twiddle(2)
 
         self.__msg("Found shot date info of %s image%s" % (date_count, ("" if date_count == 1 else "s")))
         keys = images.keys()
@@ -179,6 +182,7 @@ class MyFrame(wx.Frame):
         # Mode (0, 1, 2) == (start (add first twiddle), advance, erase)
         if mode == 0:
             # append
+            self.twiddle_next = 0
             self.control.AppendText(self.twiddle_me[self.twiddle_next])
         elif mode == 1:
             # replace
