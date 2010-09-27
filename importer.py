@@ -108,6 +108,7 @@ class Importer(Thread):
         self.__twiddle(0)
         for dirpath, dirnames, filenames in os.walk(self.source_dir):
             for fname in filenames:
+                self.__service_interrupt()
                 self.__twiddle(1)
                 base, suff = os.path.splitext(fname)
                 if suff.lower() in suffixes:
@@ -127,6 +128,7 @@ class Importer(Thread):
         self.__msg("Found %s image%s, now getting shot date info" % (image_count, ("" if image_count == 1 else "s")))
         self.__twiddle(0)
         for dirpath, base, suff, fname in image_details:
+            self.__service_interrupt()
             self.__twiddle(1)
             gd = get_date(dirpath, base, suff)
             if gd:
@@ -143,6 +145,7 @@ class Importer(Thread):
         keys.sort()
         n = 0
         for key in keys:
+            self.__service_interrupt()
             (year, month, day) = key
             files = images[key]
             d = os.path.join(self.pictures_dir, year, '%s_%s_%s' % (year, month, day))
