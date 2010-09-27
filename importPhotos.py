@@ -29,7 +29,6 @@ import shutil
 import wx
 
 class Importer:
-    """ We simply derive a new class of Frame. """
     def __init__(self, logger, source_dir, dry_run):
         self.logger = logger
         self.dry_run = dry_run
