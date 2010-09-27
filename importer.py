@@ -31,57 +31,58 @@ import shutil
 import wx
 from threading import Thread
 
+def user_shell_folders():
+    import _winreg
+    ret = {}
+    key = hive = None
+    try:
+        hive = _winreg.ConnectRegistry(None, _winreg.HKEY_CURRENT_USER)
+        key = _winreg.OpenKey(hive, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders")
+        for i in range(0, _winreg.QueryInfoKey(key)[1]):
+            name, value, val_type = _winreg.EnumValue(key, i)
+            ret[name] = value
+            i += 1
+    except WindowsError:
+        pass
+    finally:
+        if key:
+            _winreg.CloseKey(key)
+        if hive:
+            _winreg.CloseKey(hive)
+    return ret
+
+def get_pictures_dir():
+    d = user_shell_folders()
+    ret = d.get('My Pictures', None)
+    if not ret: # Not sure we need this
+        ret = d.get('Pictures', None)
+    return ret
+
+def get_date(dir, base, suff):
+    import EXIF
+    if '.mov' == suff.lower():
+        suff = '.JPG'
+    path = os.path.join(dir, base + suff)
+    f = open(path, "rb")
+    if f:
+        DTO = 'DateTimeOriginal'
+        tags = EXIF.process_file(f, stop_tag=DTO)
+        dto = tags.get('EXIF %s' % (DTO))
+        f.close()
+        if dto:
+          return string.splitfields(str(dto).replace(' ', ':'), ':')
+        else:
+          return None
+
 class Importer(Thread):
     def __init__(self, frame, source_dir, dry_run):
         Thread.__init__(self)
         self.frame = frame
         self.dry_run = dry_run
         self.source_dir = source_dir
+        self.pictures_dir = get_pictures_dir()
         self.__msg("Importing photos from %s" % (self.source_dir,))
         self.start()
-
-    def __user_shell_folders(self):
-        import _winreg
-        ret = {}
-        key = hive = None
-        try:
-            hive = _winreg.ConnectRegistry(None, _winreg.HKEY_CURRENT_USER)
-            key = _winreg.OpenKey(hive, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders")
-            for i in range(0, _winreg.QueryInfoKey(key)[1]):
-                name, value, val_type = _winreg.EnumValue(key, i)
-                ret[name] = value
-                i += 1
-        except WindowsError:
-            pass
-        finally:
-            if key:
-                _winreg.CloseKey(key)
-            if hive:
-                _winreg.CloseKey(hive)
-        return ret
-
-    def __get_date(self, dir, base, suff):
-        import EXIF
-        if '.mov' == suff.lower():
-            suff = '.JPG'
-        path = os.path.join(dir, base + suff)
-        f = open(path, "rb")
-        if f:
-            DTO = 'DateTimeOriginal'
-            tags = EXIF.process_file(f, stop_tag=DTO)
-            dto = tags.get('EXIF %s' % (DTO))
-            f.close()
-            if dto:
-              return string.splitfields(str(dto).replace(' ', ':'), ':')
-            else:
-              return None
-
-    def __get_pictures_dir(self):
-        d = self.__user_shell_folders()
-        ret = d.get('My Pictures', None)
-        if not ret: # Not sure we need this
-            ret = d.get('Pictures', None)
-        return ret
 
     def __msg(self, s):
         wx.CallAfter(self.frame.logger, s)
@@ -95,8 +96,11 @@ class Importer(Thread):
     def __twiddle(self, mode):
         wx.CallAfter(self.frame.twiddle, mode)
 
+    def __service_interrupt(self):
+        pass
+
     def run(self):
-        my_pictures = self.__get_pictures_dir()
+        my_pictures = self.pictures_dir()
         skip_dirs = ['Originals', '.picasaoriginals']
         suffixes = ['.jpg', '.jpeg', '.mov']
         image_details = []
@@ -125,7 +129,7 @@ class Importer(Thread):
         self.__twiddle(0)
         for dirpath, base, suff, fname in image_details:
             self.__twiddle(1)
-            gd = self.__get_date(dirpath, base, suff)
+            gd = get_date(dirpath, base, suff)
             if gd:
                 date_count += 1
                 (year, month, day, hour, min, sec) = gd
