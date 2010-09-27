@@ -30,8 +30,8 @@ import wx
 import threading
 
 class Importer:
-    def __init__(self, logger, source_dir, dry_run):
-        self.logger = logger
+    def __init__(self, frame, source_dir, dry_run):
+        self.frame = frame
         self.dry_run = dry_run
         self.source_dir = source_dir
         self.__msg("Importing photos from %s" % (self.source_dir,))
@@ -80,7 +80,7 @@ class Importer:
         return ret
 
     def __msg(self, s):
-        wx.CallAfter(self.logger, s)
+        wx.CallAfter(self.frame.logger, s)
 
     def __dmsg(self, s):
         if self.dry_run:
@@ -88,29 +88,44 @@ class Importer:
         else:
             self.__msg(s)
 
+    def __twiddle(self, mode):
+        wx.CallAfter(self.frame.twiddle, mode)
+
     def go(self):
         my_pictures = self.__get_pictures_dir()
+        skip_dirs = ['Originals', '.picasaoriginals']
         suffixes = ['.jpg', '.jpeg', '.mov']
         image_details = []
         images = {}
         # First find all the image files
-        for dp, dn, fn in os.walk(self.source_dir):
-            for f in fn:
-                b, s = os.path.splitext(f)
-                if s.lower() in suffixes:
-                    image_details.append((dp, b, s, f))
+        self.__twiddle(0)
+        for dirpath, dirnames, filenames in os.walk(self.source_dir):
+            for fname in filenames:
+                self.frame.twiddle(1)
+                base, suff = os.path.splitext(fname)
+                if suff.lower() in suffixes:
+                    image_details.append((dirpath, base, suff, fname))
+            for dir in skip_dirs:
+                for idx in range(len(dirnames)):
+                    if dirnames[idx] == dir:
+                        self.__twiddle(2)
+                        self.__msg("Skipping dir %s" % (dir,))
+                        self.__twiddle(0)
+                        del dirnames[idx]
+                        break
+        self.__twiddle(2)
         # Now examine their EXIF data, if we can
         image_count = len(image_details)
         date_count = 0
         self.__msg("Found %s image%s, now getting shot date info" % (image_count, ("" if image_count == 1 else "s")))
-        for dp, b, s, f in image_details:
-            gd = self.__get_date(dp, b, s)
+        for dirpath, base, suff, fname in image_details:
+            gd = self.__get_date(dirpath, base, suff)
             if gd:
                 date_count += 1
                 (year, month, day, hour, min, sec) = gd
                 key = (year, month, day)
                 l = images.get(key, [])
-                l.append([dp, f])
+                l.append([dirpath, fname])
                 images[key] = l
 
         self.__msg("Found shot date info of %s image%s" % (date_count, ("" if date_count == 1 else "s")))
@@ -127,12 +142,12 @@ class Importer:
                     os.makedirs(d)
             else:
                 self.__msg("Directory %s already exists" % (d,))
-            for (dp, f) in files:
+            for (dirpath, fname) in files:
                 n += 1
-                dest = os.path.join(d, f)
-                src = os.path.join(dp, f)
+                dest = os.path.join(d, fname)
+                src = os.path.join(dirpath, fname)
                 if not os.path.isfile(dest):
-                    self.__dmsg("Importing photo [%d of %d] %s to %s" % (n, date_count, src, dest))
+                    self.__dmsg("Importing photo [%d of %d] %s" % (n, date_count, src))
                     if not self.dry_run:
                         shutil.copy2(src, d)
                 else:
@@ -148,14 +163,33 @@ class MyFrame(wx.Frame):
         self.control = wx.TextCtrl(self, style=wx.TE_MULTILINE)
         self.control.SetEditable(False)
         self.Show(True)
+        self.twiddle_next = 0
+        self.twiddle_me = '|/-\\'
+        self.twiddle_size = len(self.twiddle_me)
         thr = threading.Thread(target=self.do_import)
-        thr.start() # Should probably join this
+        thr.start() # Will interrupt this and join it on 'early' quit
 
     def do_import(self):
-        Importer(self.logger, self.source_dir, self.opts.dry_run).go()
+        Importer(self, self.source_dir, self.opts.dry_run).go()
 
     def logger(self, s):
         self.control.AppendText("%s\n" % (s,))
+
+    def twiddle(self, mode):
+        # Mode (0, 1, 2) == (start (add first twiddle), advance, erase)
+        if mode == 0:
+            # append
+            self.control.AppendText(self.twiddle_me[self.twiddle_next])
+        elif mode == 1:
+            # replace
+            lastPos = self.control.GetLastPosition()
+            self.control.Replace(lastPos-1, lastPos, self.twiddle_me[self.twiddle_next])
+        elif mode == 2:
+            # erase
+            lastPos = self.control.GetLastPosition()
+            self.control.Remove(lastPos-1, lastPos)
+        # Advance
+        self.twiddle_next = (self.twiddle_next + 1) % self.twiddle_size
 
 if __name__ == "__main__":
     from optparse import OptionParser
