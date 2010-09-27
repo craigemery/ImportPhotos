@@ -23,47 +23,73 @@
 #FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 #OTHER DEALINGS IN THE SOFTWARE.
 
-
-import EXIF
-import sys
 import os
 import string
 import shutil
-
 import wx
 
-def get_date(dir, base, suff):
-    if '.mov' == suff.lower():
-        suff = '.JPG'
-    path = os.path.join(dir, base + suff)
-    f = open(path, "rb")
-    if f:
-        DTO = 'DateTimeOriginal'
-        tags = EXIF.process_file(f, stop_tag=DTO)
-        dto = tags.get('EXIF %s' % (DTO))
-        f.close()
-        if dto:
-          return string.splitfields(str(dto).replace(' ', ':'), ':')
-        else:
-          return None
-
-class MyFrame(wx.Frame):
+class Importer:
     """ We simply derive a new class of Frame. """
-    def __init__(self, parent, title, source_dir):
-        wx.Frame.__init__(self, parent, title=title, size=(800, 400))
-        self.control = wx.TextCtrl(self, style=wx.TE_MULTILINE)
+    def __init__(self, logger, source_dir, dry_run):
+        self.logger = logger
+        self.dry_run = dry_run
         self.source_dir = source_dir
-        self.msg("Importing photos from %s" % (source_dir,))
-        self.control.SetEditable(False)
-        self.Show(True)
-        self.Bind(wx.EVT_IDLE, self.do_import)
+        self.__msg("Importing photos from %s" % (self.source_dir,))
 
-    def msg(self, s):
-        #print s
-        self.control.AppendText("%s\n" % (s,))
+    def __user_shell_folders(self):
+        import _winreg
+        ret = {}
+        key = hive = None
+        try:
+            hive = _winreg.ConnectRegistry(None, _winreg.HKEY_CURRENT_USER)
+            key = _winreg.OpenKey(hive, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders")
+            for i in range(0, _winreg.QueryInfoKey(key)[1]):
+                name, value, val_type = _winreg.EnumValue(key, i)
+                ret[name] = value
+                i += 1
+        except WindowsError:
+            pass
+        finally:
+            if key:
+                _winreg.CloseKey(key)
+            if hive:
+                _winreg.CloseKey(hive)
+        return ret
 
-    def do_import(self, event):
-        self.Bind(wx.EVT_IDLE, None)
+    def __get_date(self, dir, base, suff):
+        import EXIF
+        if '.mov' == suff.lower():
+            suff = '.JPG'
+        path = os.path.join(dir, base + suff)
+        f = open(path, "rb")
+        if f:
+            DTO = 'DateTimeOriginal'
+            tags = EXIF.process_file(f, stop_tag=DTO)
+            dto = tags.get('EXIF %s' % (DTO))
+            f.close()
+            if dto:
+              return string.splitfields(str(dto).replace(' ', ':'), ':')
+            else:
+              return None
+
+    def __get_pictures_dir(self):
+        d = self.__user_shell_folders()
+        ret = d.get('My Pictures', None)
+        if not ret: # Not sure we need this
+            ret = d.get('Pictures', None)
+        return ret
+
+    def __msg(self, s):
+        wx.CallAfter(self.logger, s)
+
+    def __dmsg(self, s):
+        if self.dry_run:
+            self.__msg("NOT %s" % (s,))
+        else:
+            self.__msg(s)
+
+    def go(self):
+        my_pictures = self.__get_pictures_dir()
         suffixes = ['.jpg', '.jpeg', '.mov']
         image_details = []
         images = {}
@@ -75,45 +101,72 @@ class MyFrame(wx.Frame):
                     image_details.append((dp, b, s, f))
         # Now examine their EXIF data, if we can
         image_count = len(image_details)
-        exif_count = 0
-        self.msg("Found %s image%s\nNow inspecting EXIF data" % (image_count, ("" if image_count == 1 else "s")))
+        date_count = 0
+        self.__msg("Found %s image%s, now getting shot date info" % (image_count, ("" if image_count == 1 else "s")))
         for dp, b, s, f in image_details:
-            gd = get_date(dp, b, s)
+            gd = self.__get_date(dp, b, s)
             if gd:
-                exif_count += 1
+                date_count += 1
                 (year, month, day, hour, min, sec) = gd
                 key = (year, month, day)
                 l = images.get(key, [])
                 l.append([dp, f])
                 images[key] = l
 
-        self.msg("Found EXIF data in %s image%s" % (exif_count, ("" if exif_count == 1 else "s")))
+        self.__msg("Found shot date info of %s image%s" % (date_count, ("" if date_count == 1 else "s")))
         keys = images.keys()
         keys.sort()
         n = 0
-        dest_root = os.path.join(os.environ['USERPROFILE'], 'Documents', 'My Pictures')
         for key in keys:
             (year, month, day) = key
             files = images[key]
-            d = os.path.join(dest_root, year, '%s_%s_%s' % (year, month, day))
+            d = os.path.join(my_pictures, year, '%s_%s_%s' % (year, month, day))
             if not os.path.isdir(d):
-                self.msg("Creating directory %s" % (d,))
-                os.makedirs(d)
+                self.__dmsg("Creating directory %s" % (d,))
+                if not self.dry_run:
+                    os.makedirs(d)
             else:
-                self.msg("Directory %s already exists" % (d,))
+                self.__msg("Directory %s already exists" % (d,))
             for (dp, f) in files:
                 n += 1
                 dest = os.path.join(d, f)
                 src = os.path.join(dp, f)
                 if not os.path.isfile(dest):
-                    self.msg("Importing photo [%d of %d] %s" % (n, exif_count, src))
-                    shutil.copy2(src, d)
+                    self.__dmsg("Importing photo [%d of %d] %s to %s" % (n, date_count, src, dest))
+                    if not self.dry_run:
+                        shutil.copy2(src, d)
                 else:
-                    self.msg("Photo [%d of %d] %s already imported" % (n, exif_count, src))
-        self.msg("All done!")
+                    self.__msg("Photo [%d of %d] %s already imported" % (n, date_count, src))
+        self.__msg("All done!")
 
-if __name__ == "__main__" and len(sys.argv) > 1:
-    app = wx.App(False)
-    frame = MyFrame(None, "Craig's Photo Importer", sys.argv[1])
-    frame.Show(True)
-    app.MainLoop()
+class MyFrame(wx.Frame):
+    """ We simply derive a new class of Frame. """
+    def __init__(self, parent, title, opts, source_dir):
+        wx.Frame.__init__(self, parent, title=title, size=(800, 400))
+        self.opts = opts
+        self.source_dir = source_dir
+        self.control = wx.TextCtrl(self, style=wx.TE_MULTILINE)
+        self.control.SetEditable(False)
+        self.Show(True)
+        wx.CallAfter(self.do_import)
+
+    def do_import(self):
+        Importer(self.logger, self.source_dir, self.opts.dry_run).go()
+
+    def logger(self, s):
+        #print s
+        self.control.AppendText("%s\n" % (s,))
+
+if __name__ == "__main__":
+    from optparse import OptionParser
+    parser = OptionParser()
+    parser.add_option("-d", "--dry_run", default=False, action="store_true",
+                      dest="dry_run", help="Don't do anything, do a dry run")
+    (options, args) = parser.parse_args()
+    if len(args) > 0:
+        app = wx.App(False)
+        frame = MyFrame(None, "Craig's Photo Importer", options, args[0])
+        frame.Show(True)
+        app.MainLoop()
+
+# vim:sw=4:ts=4
