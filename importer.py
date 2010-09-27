@@ -100,7 +100,6 @@ class Importer(Thread):
         pass
 
     def run(self):
-        my_pictures = self.pictures_dir()
         skip_dirs = ['Originals', '.picasaoriginals']
         suffixes = ['.jpg', '.jpeg', '.mov']
         image_details = []
@@ -146,7 +145,7 @@ class Importer(Thread):
         for key in keys:
             (year, month, day) = key
             files = images[key]
-            d = os.path.join(my_pictures, year, '%s_%s_%s' % (year, month, day))
+            d = os.path.join(self.pictures_dir, year, '%s_%s_%s' % (year, month, day))
             if not os.path.isdir(d):
                 self.__dmsg("Creating directory %s" % (d,))
                 if not self.dry_run:
