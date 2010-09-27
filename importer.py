@@ -117,7 +117,7 @@ class Importer(Thread):
                 for idx in range(len(dirnames)):
                     if dirnames[idx] == dir:
                         self.__twiddle(2)
-                        self.__msg("Skipping dir %s" % (dir,))
+                        self.__msg("Skipping dir %s" % (os.path.join(dirpath, dir),))
                         self.__twiddle(0)
                         del dirnames[idx]
                         break
