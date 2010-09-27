@@ -20,7 +20,9 @@ Usage is simple:
 
 python importPhotos.py <path>|<drive:>
 
-I've used <can't remember the name> to associate this command line with inserted media and Windows passes the drive letter of the mounted Camera as argument 1
+I've used Microsoft XP PowerToy TweakUI to associate this command line with inserted media and Windows passes the drive letter of the mounted Camera as argument 1
+You can get TweakUI from:
+http://www.microsoft.com/windowsxp/downloads/powertoys/xppowertoys.mspx
 
 Windows Vista setup has so far eluded me
 
