@@ -1,1 +1,25 @@
-Planning on improving this with wxPython GUI, for now, happy with just getting photos in the right place
+Welcome to ImportPhotos.
+I like to have my photos filed on my computer in folders that replect the shot date of the photos.
+I used to have a Canon camera and the import software that came with it did this by default and so my library was organised that way.
+Then the camera died and I got a Panasonic one and it's software doesn't do things that way, which is bad.
+So I wrote this program to examine EXIF data of photos and copy them to your My Puctures folder, making the date folders as it goes.
+It currently assumes that should the destination file already exist, you've already imported it (I don't examine the contents).
+
+The program runs only on Windows (for now) and requires wxPython, pywin32 and EXIF.py
+
+Get wxPython from:
+http://www.wxpython.org/download.php
+
+Get pywin32 from:
+http://sourceforge.net/projects/pywin32/files/
+
+Get EXIF.py from:
+http://sourceforge.net/projects/exif-py/
+
+Usage is simple:
+
+python importPhotos.py <path>|<drive:>
+
+I've used <can't remember the name> to associate this command line with inserted media and Windows passes the drive letter of the mounted Camera as argument 1
+
+Windows Vista setup has so far eluded me
