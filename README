@@ -23,3 +23,6 @@ python importPhotos.py <path>|<drive:>
 I've used <can't remember the name> to associate this command line with inserted media and Windows passes the drive letter of the mounted Camera as argument 1
 
 Windows Vista setup has so far eluded me
+
+Thanks go to:
+  Luke Tunmer helped me make the UI act properly
