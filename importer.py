@@ -29,13 +29,16 @@ import os
 import string
 import shutil
 import wx
+from threading import Thread
 
-class Importer:
+class Importer(Thread):
     def __init__(self, frame, source_dir, dry_run):
+        Thread.__init__(self)
         self.frame = frame
         self.dry_run = dry_run
         self.source_dir = source_dir
         self.__msg("Importing photos from %s" % (self.source_dir,))
+        self.start()
 
     def __user_shell_folders(self):
         import _winreg
@@ -92,7 +95,7 @@ class Importer:
     def __twiddle(self, mode):
         wx.CallAfter(self.frame.twiddle, mode)
 
-    def go(self):
+    def run(self):
         my_pictures = self.__get_pictures_dir()
         skip_dirs = ['Originals', '.picasaoriginals']
         suffixes = ['.jpg', '.jpeg', '.mov']

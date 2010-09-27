@@ -24,7 +24,6 @@
 #OTHER DEALINGS IN THE SOFTWARE.
 
 import wx
-import threading
 from importer import Importer
 
 class MyFrame(wx.Frame):
@@ -39,11 +38,7 @@ class MyFrame(wx.Frame):
         self.twiddle_next = 0
         self.twiddle_me = '|/-\\'
         self.twiddle_size = len(self.twiddle_me)
-        thr = threading.Thread(target=self.do_import)
-        thr.start() # Will interrupt this and join it on 'early' quit
-
-    def do_import(self):
-        Importer(self, self.source_dir, self.opts.dry_run).go()
+        self.importer = Importer(self, self.source_dir, self.opts.dry_run)
 
     def logger(self, s):
         self.control.AppendText("%s\n" % (s,))
