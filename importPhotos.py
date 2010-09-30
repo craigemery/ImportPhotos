@@ -38,9 +38,10 @@ class MyFrame(wx.Frame):
         self.twiddle_next = 0
         self.twiddle_me = '|/-\\'
         self.twiddle_size = len(self.twiddle_me)
-        self.importer = Importer(self, self.source_dir, self.opts.dry_run)
+        self.importer = Importer(self, self.source_dir, self.opts)
 
     def logger(self, s):
+        print s
         self.control.AppendText("%s\n" % (s,))
 
     def twiddle(self, mode):
@@ -63,8 +64,10 @@ class MyFrame(wx.Frame):
 if __name__ == "__main__":
     from optparse import OptionParser
     parser = OptionParser()
-    parser.add_option("-d", "--dry_run", default=False, action="store_true",
+    parser.add_option("-n", "--nothing", default=False, action="store_true",
                       dest="dry_run", help="Don't do anything, do a dry run")
+    parser.add_option("-d", "--dest", default=["<shell:Pictures>"], action="append",
+                      dest="dest_dirs", help="Destination")
     (options, args) = parser.parse_args()
     if len(args) > 0:
         app = wx.App(False)

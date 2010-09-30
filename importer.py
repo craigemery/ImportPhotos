@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-#Copyright (c) 2009-2010 Norman Craig Emery
+#Copyright (c) 2010 Norman Craig Emery
 #
 #Permission is hereby granted, free of charge, to any person
 #obtaining a copy of this software and associated documentation
@@ -51,12 +51,22 @@ def user_shell_folders():
             _winreg.CloseKey(hive)
     return ret
 
-def get_pictures_dir():
-    d = user_shell_folders()
-    ret = d.get('My Pictures', None)
+USF = user_shell_folders()
+
+def get_shell_dir(d):
+    ret = USF.get(d, None)
     if not ret: # Not sure we need this
-        ret = d.get('Pictures', None)
+        ret = USF.get("My %s" % (d,), None)
     return ret
+
+def parse_dest_dirs(l):
+    ret = []
+    for d in l:
+        head = "<shell:"
+        if d.index(head) == 0 and d[-1] == ">":
+            d = get_shell_dir(d[len(head):-1])
+        if d:
+            ret.append(d)
 
 def get_date(dir, base, suff):
     import EXIF
@@ -75,14 +85,15 @@ def get_date(dir, base, suff):
           return None
 
 class Importer(Thread):
-    def __init__(self, frame, source_dir, dry_run):
+    def __init__(self, frame, source_dir, opts):
         Thread.__init__(self)
         self.frame = frame
-        self.dry_run = dry_run
+        self.dry_run = opts.dry_run
         self.source_dir = source_dir
-        self.pictures_dir = get_pictures_dir()
-        self.__msg("Importing photos from %s" % (self.source_dir,))
-        self.start()
+        self.dest_dirs = parse_dest_dirs(opts.dest_dirs)
+        if self.dest_dirs:
+            self.__msg("Importing photos from %s" % (self.source_dir,))
+            self.start()
 
     def __msg(self, s):
         wx.CallAfter(self.frame.logger, s)
@@ -148,23 +159,25 @@ class Importer(Thread):
             self.__service_interrupt()
             (year, month, day) = key
             files = images[key]
-            d = os.path.join(self.pictures_dir, year, '%s_%s_%s' % (year, month, day))
-            if not os.path.isdir(d):
-                self.__dmsg("Creating directory %s" % (d,))
-                if not self.dry_run:
-                    os.makedirs(d)
-            else:
-                self.__msg("Directory %s already exists" % (d,))
-            for (dirpath, fname) in files:
-                n += 1
-                dest = os.path.join(d, fname)
-                src = os.path.join(dirpath, fname)
-                if not os.path.isfile(dest):
-                    self.__dmsg("Importing photo [%d of %d] %s" % (n, date_count, src))
+            date_dir = '%s_%s_%s' % (year, month, day)
+            for dest in self.dest_dirs:
+                d = os.path.join(dest, year, date_dir)
+                if not os.path.isdir(d):
+                    self.__dmsg("Creating directory %s" % (d,))
                     if not self.dry_run:
-                        shutil.copy2(src, d)
+                        os.makedirs(d)
                 else:
-                    self.__msg("Photo [%d of %d] %s already imported" % (n, date_count, src))
+                    self.__msg("Directory %s already exists" % (d,))
+                for (dirpath, fname) in files:
+                    n += 1
+                    dest = os.path.join(d, fname)
+                    src = os.path.join(dirpath, fname)
+                    if not os.path.isfile(dest):
+                        self.__dmsg("Importing photo [%d of %d] %s" % (n, date_count, src))
+                        if not self.dry_run:
+                            shutil.copy2(src, d)
+                    else:
+                        self.__msg("Photo [%d of %d] %s already imported" % (n, date_count, src))
         self.__msg("All done!")
 
 #vim:sw=4:ts=4
