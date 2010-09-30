@@ -30,6 +30,7 @@ import string
 import shutil
 import wx
 from threading import Thread
+import sys
 
 def user_shell_folders():
     import _winreg
@@ -63,10 +64,14 @@ def parse_dest_dirs(l):
     ret = []
     for d in l:
         head = "<shell:"
-        if d.index(head) == 0 and d[-1] == ">":
-            d = get_shell_dir(d[len(head):-1])
-        if d:
+        try:
+            if d.index(head) == 0 and d[-1] == ">":
+                d = get_shell_dir(d[len(head):-1])
+        except:
+            pass
+        if d and os.path.isdir(d):
             ret.append(d)
+    return ret
 
 def get_date(dir, base, suff):
     import EXIF
@@ -94,9 +99,15 @@ class Importer(Thread):
         if self.dest_dirs:
             self.__msg("Importing photos from %s" % (self.source_dir,))
             self.start()
+        else:
+            self.__msg("Not Importing photos from %s" % (self.source_dir,))
 
     def __msg(self, s):
-        wx.CallAfter(self.frame.logger, s)
+        try:
+            wx.CallAfter(self.frame.logger, s)
+        except wx.PyDeadObjectError:
+            sys.exit(0)
+            pass
 
     def __dmsg(self, s):
         if self.dry_run:
@@ -160,24 +171,26 @@ class Importer(Thread):
             (year, month, day) = key
             files = images[key]
             date_dir = '%s_%s_%s' % (year, month, day)
-            for dest in self.dest_dirs:
-                d = os.path.join(dest, year, date_dir)
+            for dest_dir in self.dest_dirs:
+                d = os.path.join(dest_dir, year, date_dir)
                 if not os.path.isdir(d):
                     self.__dmsg("Creating directory %s" % (d,))
                     if not self.dry_run:
                         os.makedirs(d)
                 else:
                     self.__msg("Directory %s already exists" % (d,))
-                for (dirpath, fname) in files:
-                    n += 1
+            for (dirpath, fname) in files:
+                n += 1
+                for dest_dir in self.dest_dirs:
+                    d = os.path.join(dest_dir, year, date_dir)
                     dest = os.path.join(d, fname)
                     src = os.path.join(dirpath, fname)
                     if not os.path.isfile(dest):
-                        self.__dmsg("Importing photo [%d of %d] %s" % (n, date_count, src))
+                        self.__dmsg("Importing photo [%d of %d] %s to %s" % (n, date_count, src, dest))
                         if not self.dry_run:
                             shutil.copy2(src, d)
                     else:
-                        self.__msg("Photo [%d of %d] %s already imported" % (n, date_count, src))
+                        self.__msg("Photo [%d of %d] %s already imported to %s" % (n, date_count, src, dest))
         self.__msg("All done!")
 
 #vim:sw=4:ts=4

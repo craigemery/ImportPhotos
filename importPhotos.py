@@ -41,7 +41,6 @@ class MyFrame(wx.Frame):
         self.importer = Importer(self, self.source_dir, self.opts)
 
     def logger(self, s):
-        print s
         self.control.AppendText("%s\n" % (s,))
 
     def twiddle(self, mode):
