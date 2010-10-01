@@ -29,8 +29,7 @@ import os
 import string
 import shutil
 import wx
-from threading import Thread
-import sys
+from threading import Thread, Event
 
 def user_shell_folders():
     import _winreg
@@ -92,8 +91,9 @@ def get_date(dir, base, suff):
 class Importer(Thread):
     def __init__(self, frame, source_dir, opts):
         Thread.__init__(self)
+        self.interrupt = Event()
         self.frame = frame
-        self.dry_run = opts.dry_run
+        self.opts = opts
         self.source_dir = source_dir
         self.dest_dirs = parse_dest_dirs(opts.dest_dirs)
         if self.dest_dirs:
@@ -102,56 +102,64 @@ class Importer(Thread):
         else:
             self.__msg("Not Importing photos from %s" % (self.source_dir,))
 
-    def __msg(self, s):
+    def __msg(self, s, min_verbosity = 1):
         try:
-            wx.CallAfter(self.frame.logger, s)
+            self.__service_interrupt()
+            if self.opts.verbosity >= min_verbosity:
+                wx.CallAfter(self.frame.logger, s)
         except wx.PyDeadObjectError:
-            sys.exit(0)
-            pass
+            self.interrupt.set()
 
-    def __dmsg(self, s):
-        if self.dry_run:
-            self.__msg("NOT %s" % (s,))
+    def __dmsg(self, s, min_verbosity = 1):
+        if self.opts.dry_run:
+            self.__msg("NOT %s" % (s,), min_verbosity)
         else:
-            self.__msg(s)
+            self.__msg(s, min_verbosity)
 
-    def __twiddle(self, mode):
-        wx.CallAfter(self.frame.twiddle, mode)
+    def __progress(self, mode):
+        self.__service_interrupt()
+        if self.opts.verbosity > 1:
+            wx.CallAfter(self.frame.twiddle, mode)
 
     def __service_interrupt(self):
-        pass
+        if self.interrupt.is_set():
+          raise UserWarning("Raise Thread Quitting")
 
     def run(self):
+        try:
+            self.runner()
+        except Exception, e:
+            pass
+
+    def runner(self):
         skip_dirs = ['Originals', '.picasaoriginals']
         suffixes = ['.jpg', '.jpeg', '.mov']
         image_details = []
         images = {}
         # First find all the image files
-        self.__twiddle(0)
+        self.__progress(0)
         for dirpath, dirnames, filenames in os.walk(self.source_dir):
             for fname in filenames:
-                self.__service_interrupt()
-                self.__twiddle(1)
+                self.__progress(1)
                 base, suff = os.path.splitext(fname)
                 if suff.lower() in suffixes:
                     image_details.append((dirpath, base, suff, fname))
             for dir in skip_dirs:
                 for idx in range(len(dirnames)):
                     if dirnames[idx] == dir:
-                        self.__twiddle(2)
-                        self.__msg("Skipping dir %s" % (os.path.join(dirpath, dir),))
-                        self.__twiddle(0)
+                        self.__progress(2)
+                        self.__msg("Skipping dir %s" % (os.path.join(dirpath, dir),), 2)
+                        self.__progress(0)
                         del dirnames[idx]
                         break
-        self.__twiddle(2)
+        self.__progress(2)
         # Now examine their EXIF data, if we can
         image_count = len(image_details)
         date_count = 0
         self.__msg("Found %s image%s, now getting shot date info" % (image_count, ("" if image_count == 1 else "s")))
-        self.__twiddle(0)
+        self.__progress(0)
         for dirpath, base, suff, fname in image_details:
-            self.__service_interrupt()
-            self.__twiddle(1)
+            self.__progress(1)
             gd = get_date(dirpath, base, suff)
             if gd:
                 date_count += 1
@@ -160,37 +168,37 @@ class Importer(Thread):
                 l = images.get(key, [])
                 l.append([dirpath, fname])
                 images[key] = l
-        self.__twiddle(2)
+        self.__progress(2)
 
         self.__msg("Found shot date info of %s image%s" % (date_count, ("" if date_count == 1 else "s")))
         keys = images.keys()
         keys.sort()
         n = 0
         for key in keys:
-            self.__service_interrupt()
             (year, month, day) = key
             files = images[key]
             date_dir = '%s_%s_%s' % (year, month, day)
             for dest_dir in self.dest_dirs:
                 d = os.path.join(dest_dir, year, date_dir)
                 if not os.path.isdir(d):
-                    self.__dmsg("Creating directory %s" % (d,))
-                    if not self.dry_run:
+                    self.__dmsg("Creating directory %s" % (d,), 2)
+                    if not self.opts.dry_run:
                         os.makedirs(d)
                 else:
-                    self.__msg("Directory %s already exists" % (d,))
+                    self.__msg("Directory %s already exists" % (d,), 2)
             for (dirpath, fname) in files:
                 n += 1
                 for dest_dir in self.dest_dirs:
                     d = os.path.join(dest_dir, year, date_dir)
                     dest = os.path.join(d, fname)
                     src = os.path.join(dirpath, fname)
+                    mention_dest = (" to %s" % (dest,)) if self.opts.verbosity > 1 else ""
                     if not os.path.isfile(dest):
-                        self.__dmsg("Importing photo [%d of %d] %s to %s" % (n, date_count, src, dest))
-                        if not self.dry_run:
+                        self.__dmsg("Importing photo [%d of %d] %s%s" % (n, date_count, src, mention_dest))
+                        if not self.opts.dry_run:
                             shutil.copy2(src, d)
                     else:
-                        self.__msg("Photo [%d of %d] %s already imported to %s" % (n, date_count, src, dest))
+                        self.__msg("Photo [%d of %d] %s already imported%s" % (n, date_count, src, mention_dest))
         self.__msg("All done!")
 
 #vim:sw=4:ts=4

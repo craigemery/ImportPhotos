@@ -23,13 +23,17 @@
 #FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 #OTHER DEALINGS IN THE SOFTWARE.
 
+from __future__ import with_statement
+
 import wx
 from importer import Importer
+from threading import Lock
 
 class MyFrame(wx.Frame):
     """ We simply derive a new class of Frame. """
     def __init__(self, parent, title, opts, source_dir):
         wx.Frame.__init__(self, parent, title=title, size=(800, 400))
+        self.lock = Lock()
         self.opts = opts
         self.source_dir = source_dir
         self.control = wx.TextCtrl(self, style=wx.TE_MULTILINE)
@@ -39,16 +43,26 @@ class MyFrame(wx.Frame):
         self.twiddle_me = '|/-\\'
         self.twiddle_size = len(self.twiddle_me)
         self.importer = Importer(self, self.source_dir, self.opts)
+        self.Bind(wx.EVT_CLOSE, self.onClose)
+
+    def onClose(self, event):
+        self.importer.interrupt.set()
+        self.importer.join()
+        self.Destroy()
+
+    def __append_text(self, s):
+        with self.lock:
+            self.control.AppendText(s)
 
     def logger(self, s):
-        self.control.AppendText("%s\n" % (s,))
+        self.__append_text("%s\n" % (s,))
 
     def twiddle(self, mode):
         # Mode (0, 1, 2) == (start (add first twiddle), advance, erase)
         if mode == 0:
             # append
             self.twiddle_next = 0
-            self.control.AppendText(self.twiddle_me[self.twiddle_next])
+            self.__append_text(self.twiddle_me[self.twiddle_next])
         elif mode == 1:
             # replace
             lastPos = self.control.GetLastPosition()
@@ -63,6 +77,8 @@ class MyFrame(wx.Frame):
 if __name__ == "__main__":
     from optparse import OptionParser
     parser = OptionParser()
+    parser.add_option("-v", "--verbose", default=1, action="count",
+                      dest="verbosity", help="Increase verbosity")
     parser.add_option("-n", "--nothing", default=False, action="store_true",
                       dest="dry_run", help="Don't do anything, do a dry run")
     parser.add_option("-d", "--dest", default=["<shell:Pictures>"], action="append",
