@@ -30,18 +30,18 @@ import string
 import shutil
 import wx
 from threading import Thread, Event
+import EXIF
+import _winreg
 
 def user_shell_folders():
-    import _winreg
     ret = {}
     key = hive = None
     try:
         hive = _winreg.ConnectRegistry(None, _winreg.HKEY_CURRENT_USER)
         key = _winreg.OpenKey(hive, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders")
-        for i in range(0, _winreg.QueryInfoKey(key)[1]):
+        for i in range(_winreg.QueryInfoKey(key)[1]):
             name, value, val_type = _winreg.EnumValue(key, i)
             ret[name] = value
-            i += 1
     except WindowsError:
         pass
     finally:
@@ -73,7 +73,6 @@ def parse_dest_dirs(l):
     return ret
 
 def get_date(dir, base, suff):
-    import EXIF
     if '.mov' == suff.lower():
         suff = '.JPG'
     path = os.path.join(dir, base + suff)
