@@ -1,8 +1,8 @@
 Welcome to ImportPhotos.
-I like to have my photos filed on my computer in folders that replect the shot date of the photos.
+I like to have my photos filed on my computer in folders that respect the shot date of the photos.
 I used to have a Canon camera and the import software that came with it did this by default and so my library was organised that way.
 Then the camera died and I got a Panasonic one and it's software doesn't do things that way, which is bad.
-So I wrote this program to examine EXIF data of photos and copy them to your My Puctures folder, making the date folders as it goes.
+So I wrote this program to examine EXIF data of photos and copy them to your My Pictures folder, making the date folders as it goes.
 It currently assumes that should the destination file already exist, you've already imported it (I don't examine the contents).
 
 The program runs only on Windows (for now) and requires wxPython, pywin32 and EXIF.py
@@ -24,7 +24,7 @@ I've used Microsoft XP PowerToy TweakUI to associate this command line with inse
 You can get TweakUI from:
 http://www.microsoft.com/windowsxp/downloads/powertoys/xppowertoys.mspx
 
-Windows Vista setup has so far eluded me
+Windows Vista set-up has so far eluded me
 
 Thanks go to:
   Luke Tunmer helped me make the UI act properly
