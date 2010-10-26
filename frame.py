@@ -77,7 +77,7 @@ class MyFrame(wx.Frame):
         # Advance
         self.twiddle_next = (self.twiddle_next + 1) % self.twiddle_size
 
-def main()
+def main():
     from optparse import OptionParser
     parser = OptionParser()
     parser.add_option("-v", "--verbose", default=1, action="count",
