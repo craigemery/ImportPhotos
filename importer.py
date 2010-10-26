@@ -118,7 +118,9 @@ class Importer(Thread):
         self.opts = opts
         self.source_dirs = source_dirs
         self.dest_dirs = parse_dest_dirs(opts.dest_dirs)
-        self.__msg("%sImporting photos from %s" % (("" if self.dest_dirs else "Not "), ", ".join(self.source_dirs)))
+        self.photos = ['.jpg', '.jpeg']
+        self.videos = ['.mov', '.3gp']
+        self.__msg("%sImporting media from %s" % (("" if self.dest_dirs else "Not "), ", ".join(self.source_dirs)))
         if self.dest_dirs:
             self.start()
 
@@ -145,6 +147,15 @@ class Importer(Thread):
         if self.interrupt.is_set():
           raise UserWarning("Raise Thread Quitting")
 
+    def __kind(self, fname):
+        base, suff = os.path.splitext(fname)
+        if suff in self.photos:
+            return "photo"
+        elif suff in self.videos:
+            return "video"
+        else:
+            return "file (!)"
+
     def run(self):
         try:
             self.runner()
@@ -153,7 +164,7 @@ class Importer(Thread):
 
     def runner(self):
         skip_dirs = ['Originals', '.picasaoriginals']
-        suffixes = ['.jpg', '.jpeg', '.mov', '.3gp']
+        suffixes = self.photos + self.videos
         image_details = []
         images = {}
         # First find all the image files
@@ -217,8 +228,9 @@ class Importer(Thread):
                     mention_dest = (" to %s" % (dest,)) if self.opts.verbosity > 1 else ""
                     dest_len = file_length(dest)
                     # If it's not there TO START WITH
+                    kind = self.__kind(src)
                     if dest_len is None:
-                        self.__dmsg("Importing photo [%d of %d] %s%s" % (n, date_count, src, mention_dest))
+                        self.__dmsg("Importing %s [file %d of %d] %s%s" % (kind, n, date_count, src, mention_dest))
                         if not self.opts.dry_run:
                             src_len = file_length(src)
                             limit = 0
@@ -241,7 +253,7 @@ class Importer(Thread):
                                 dest_len = file_length(dest)
                                 limit += 1
                     else:
-                        self.__msg("Photo [%d of %d] %s already imported%s" % (n, date_count, src, mention_dest))
+                        self.__msg("%s [file %d of %d] %s already imported%s" % (kind, n, date_count, src, mention_dest))
         self.__msg("All done!")
 
 #vim:sw=4:ts=4
