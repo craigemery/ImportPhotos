@@ -37,6 +37,7 @@ import EXIF
 import _winreg
 import platform
 import ctypes
+import re
 
 def get_free_space(folder):
     """ Return folder/drive free space (in bytes)
@@ -88,6 +89,8 @@ def parse_dest_dirs(l):
             ret.append(d)
     return ret
 
+twelve_numbers = re.compile('^(?P<YY>\d{2})(?P<MM>\d{2})(?P<DD>\d{2})(?P<HH>\d{2})(?P<mm>\d{2})(?P<SS>\d{2})$')
+
 def get_date(dir, base, suff):
     root = os.path.join(dir, base)
     lsuff = suff.lower()
@@ -97,7 +100,9 @@ def get_date(dir, base, suff):
     ret = None
     if os.path.isfile(path):
         if '.3gp' == lsuff:
-            ret = (str(2000 + int(base[0:2])), base[2:4], base[4:6], base[6:8], base[8:10], base[10:12])
+            m = twelve_numbers.search(base)
+            if m:
+                ret = (str(2000 + int(m.group('YY'))), m.group('MM'),  m.group('DD'),  m.group('HH'),  m.group('mm'),  m.group('SS'))
         else:
             with open(path, "rb") as f:
                 DTO = 'DateTimeOriginal'
