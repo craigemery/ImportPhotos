@@ -23,9 +23,12 @@
 #FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR
 #OTHER DEALINGS IN THE SOFTWARE.
 
+from __future__ import with_statement
+
 __init__ = ['Importer']
 
 import os
+from stat import ST_SIZE
 import string
 import shutil
 import wx
@@ -76,16 +79,18 @@ def get_date(dir, base, suff):
     if '.mov' == suff.lower():
         suff = '.JPG'
     path = os.path.join(dir, base + suff)
-    f = open(path, "rb")
-    if f:
-        DTO = 'DateTimeOriginal'
-        tags = EXIF.process_file(f, stop_tag=DTO)
-        dto = tags.get('EXIF %s' % (DTO))
-        f.close()
-        if dto:
-          return string.splitfields(str(dto).replace(' ', ':'), ':')
-        else:
-          return None
+    ret = None
+    if os.path.isfile(path):
+        with open(path, "rb") as f:
+            DTO = 'DateTimeOriginal'
+            tags = EXIF.process_file(f, stop_tag=DTO)
+            dto = tags.get('EXIF %s' % (DTO))
+            if dto:
+                ret = string.splitfields(str(dto).replace(' ', ':'), ':')
+    return ret
+
+def file_length(fname):
+    return None if not os.path.isfile(fname) else os.stat(fname)[ST_SIZE]
 
 class Importer(Thread):
     def __init__(self, frame, source_dir, opts):
@@ -128,7 +133,7 @@ class Importer(Thread):
         try:
             self.runner()
         except Exception, e:
-            pass
+            pass # print "Exception %s" % (str(e),)
 
     def runner(self):
         skip_dirs = ['Originals', '.picasaoriginals']
@@ -192,10 +197,14 @@ class Importer(Thread):
                     dest = os.path.join(d, fname)
                     src = os.path.join(dirpath, fname)
                     mention_dest = (" to %s" % (dest,)) if self.opts.verbosity > 1 else ""
-                    if not os.path.isfile(dest):
+                    dest_len = file_length(dest)
+                    if dest_len is None:
                         self.__dmsg("Importing photo [%d of %d] %s%s" % (n, date_count, src, mention_dest))
                         if not self.opts.dry_run:
-                            shutil.copy2(src, d)
+                            src_len = file_length(src)
+                            while src_len != dest_len:
+                                shutil.copy2(src, dest)
+                                dest_len = file_length(dest)
                     else:
                         self.__msg("Photo [%d of %d] %s already imported%s" % (n, date_count, src, mention_dest))
         self.__msg("All done!")
