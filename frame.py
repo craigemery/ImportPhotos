@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 
-#Copyright (c) 2009-2010 Norman Craig Emery
+#Copyright (c) 2010 Norman Craig Emery
 #
 #Permission is hereby granted, free of charge, to any person
 #obtaining a copy of this software and associated documentation
