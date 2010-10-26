@@ -221,7 +221,11 @@ class Importer(Thread):
                         self.__dmsg("Importing photo [%d of %d] %s%s" % (n, date_count, src, mention_dest))
                         if not self.opts.dry_run:
                             src_len = file_length(src)
+                            limit = 0
                             while src_len != dest_len:
+                                if limit > 10: # completely arbitrary re-try limit
+                                    self.__msg("Failed to copy %s too many times" % (src),)
+                                    raise UserWarning("Re-try excessive")
                                 # First entry to this loop, the dest is missing
                                 # But when we loop, it'll be present and unequal to source
                                 if dest_len is not None:
@@ -230,11 +234,12 @@ class Importer(Thread):
                                 # Now check there's enough free space
                                 if src_len >= get_free_space(d):
                                     self.__msg("Ran out of disk space")
-                                    raise Exception("Not enough free space")
+                                    raise UserWarning("Not enough free space")
                                 # Attempt the copy
                                 shutil.copy2(src, dest)
                                 # Re-get the length
                                 dest_len = file_length(dest)
+                                limit += 1
                     else:
                         self.__msg("Photo [%d of %d] %s already imported%s" % (n, date_count, src, mention_dest))
         self.__msg("All done!")
