@@ -35,6 +35,19 @@ import wx
 from threading import Thread, Event
 import EXIF
 import _winreg
+import platform
+import ctypes
+
+def get_free_space(folder):
+    """ Return folder/drive free space (in bytes)
+    """
+    if platform.system() == 'Windows':
+        free_bytes = ctypes.c_ulonglong(0)
+        ctypes.windll.kernel32.GetDiskFreeSpaceExW(ctypes.c_wchar_p(folder), None, None, ctypes.pointer(free_bytes))
+        return free_bytes.value
+    else:
+        s = os.statvfs(folder)
+        return s.f_bfree * s.f_bsize
 
 def user_shell_folders():
     ret = {}
@@ -203,12 +216,24 @@ class Importer(Thread):
                     src = os.path.join(dirpath, fname)
                     mention_dest = (" to %s" % (dest,)) if self.opts.verbosity > 1 else ""
                     dest_len = file_length(dest)
+                    # If it's not there TO START WITH
                     if dest_len is None:
                         self.__dmsg("Importing photo [%d of %d] %s%s" % (n, date_count, src, mention_dest))
                         if not self.opts.dry_run:
                             src_len = file_length(src)
                             while src_len != dest_len:
+                                # First entry to this loop, the dest is missing
+                                # But when we loop, it'll be present and unequal to source
+                                if dest_len is not None:
+                                    # So delete the fragment
+                                    os.unlink(dest)
+                                # Now check there's enough free space
+                                if src_len >= get_free_space(d):
+                                    self.__msg("Ran out of disk space")
+                                    raise Exception("Not enough free space")
+                                # Attempt the copy
                                 shutil.copy2(src, dest)
+                                # Re-get the length
                                 dest_len = file_length(dest)
                     else:
                         self.__msg("Photo [%d of %d] %s already imported%s" % (n, date_count, src, mention_dest))
