@@ -47,7 +47,9 @@ class MyFrame(wx.Frame):
 
     def onClose(self, event):
         self.importer.interrupt.set()
-        self.importer.join()
+        while self.importer.isAlive():
+            self.importer.join(1)
+            wx.Yield()
         self.Destroy()
 
     def __append_text(self, s):
@@ -55,6 +57,7 @@ class MyFrame(wx.Frame):
             self.control.AppendText(s)
 
     def logger(self, s):
+        # print s
         self.__append_text("%s\n" % (s,))
 
     def twiddle(self, mode):
