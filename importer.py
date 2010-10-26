@@ -28,7 +28,7 @@ from __future__ import with_statement
 __init__ = ['Importer']
 
 import os
-from stat import ST_SIZE
+import stat
 import string
 import shutil
 import wx
@@ -38,6 +38,7 @@ import _winreg
 import platform
 import ctypes
 import re
+import time
 
 def get_free_space(folder):
     """ Return folder/drive free space (in bytes)
@@ -90,30 +91,11 @@ def parse_dest_dirs(l):
     return ret
 
 twelve_numbers = re.compile('^(?P<YY>\d{2})(?P<MM>\d{2})(?P<DD>\d{2})(?P<HH>\d{2})(?P<mm>\d{2})(?P<SS>\d{2})$')
-
-def get_date(dir, base, suff):
-    root = os.path.join(dir, base)
-    lsuff = suff.lower()
-    if '.mov' == lsuff and os.path.isfile(root + ".JPG"):
-        suff = '.JPG'
-    path = root + suff
-    ret = None
-    if os.path.isfile(path):
-        if '.3gp' == lsuff:
-            m = twelve_numbers.search(base)
-            if m:
-                ret = (str(2000 + int(m.group('YY'))), m.group('MM'),  m.group('DD'),  m.group('HH'),  m.group('mm'),  m.group('SS'))
-        else:
-            with open(path, "rb") as f:
-                DTO = 'DateTimeOriginal'
-                tags = EXIF.process_file(f, stop_tag=DTO)
-                dto = tags.get('EXIF %s' % (DTO))
-                if dto:
-                    ret = string.splitfields(str(dto).replace(' ', ':'), ':')
-    return ret
+# Video12141552.3gp
+Video_and_numbers = re.compile('^Video(?P<MM>\d{2})(?P<DD>\d{2})(?P<HH>\d{2})(?P<mm>\d{2})$')
 
 def file_length(fname):
-    return None if not os.path.isfile(fname) else os.stat(fname)[ST_SIZE]
+    return None if not os.path.isfile(fname) else os.stat(fname)[stat.ST_SIZE]
 
 class Importer(Thread):
     def __init__(self, frame, source_dirs, opts):
@@ -124,10 +106,36 @@ class Importer(Thread):
         self.source_dirs = source_dirs
         self.dest_dirs = parse_dest_dirs(opts.dest_dirs)
         self.photos = ['.jpg', '.jpeg']
-        self.videos = ['.mov', '.3gp']
+        self.videos = ['.mov', '.3gp', '.mp4']
         self.__msg("%sImporting media from %s" % (("" if self.dest_dirs else "Not "), ", ".join(self.source_dirs)))
         if self.dest_dirs:
             self.start()
+
+    def get_date(self, dir, base, suff):
+        root = os.path.join(dir, base)
+        lsuff = suff.lower()
+        if '.mov' == lsuff and os.path.isfile(root + ".JPG"):
+            suff = '.JPG'
+        path = root + suff
+        ret = None
+        if os.path.isfile(path):
+            if lsuff in self.videos:
+                m = twelve_numbers.search(base)
+                if m:
+                    ret = (str(2000 + int(m.group('YY'))), m.group('MM'),  m.group('DD'),  m.group('HH'),  m.group('mm'),  m.group('SS'))
+                else:
+                    m = Video_and_numbers.search(base)
+                    if m:
+                        YY = str(time.localtime(os.stat(path)[stat.ST_MTIME])[0])
+                        ret = (YY, m.group('MM'),  m.group('DD'),  m.group('HH'),  m.group('mm'), None)
+            else:
+                with open(path, "rb") as f:
+                    DTO = 'DateTimeOriginal'
+                    tags = EXIF.process_file(f, stop_tag=DTO)
+                    dto = tags.get('EXIF %s' % (DTO))
+                    if dto:
+                        ret = string.splitfields(str(dto).replace(' ', ':'), ':')
+        return ret
 
     def __msg(self, s, min_verbosity = 1):
         try:
@@ -198,7 +206,7 @@ class Importer(Thread):
         self.__progress(0)
         for dirpath, base, suff, fname in image_details:
             self.__progress(1)
-            gd = get_date(dirpath, base, suff)
+            gd = self.get_date(dirpath, base, suff)
             if gd:
                 date_count += 1
                 (year, month, day, hour, min, sec) = gd
