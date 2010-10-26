@@ -76,35 +76,38 @@ def parse_dest_dirs(l):
     return ret
 
 def get_date(dir, base, suff):
-    if '.mov' == suff.lower():
+    root = os.path.join(dir, base)
+    lsuff = suff.lower()
+    if '.mov' == lsuff and os.path.isfile(root + ".JPG"):
         suff = '.JPG'
-    path = os.path.join(dir, base + suff)
+    path = root + suff
     ret = None
     if os.path.isfile(path):
-        with open(path, "rb") as f:
-            DTO = 'DateTimeOriginal'
-            tags = EXIF.process_file(f, stop_tag=DTO)
-            dto = tags.get('EXIF %s' % (DTO))
-            if dto:
-                ret = string.splitfields(str(dto).replace(' ', ':'), ':')
+        if '.3gp' == lsuff:
+            ret = (str(2000 + int(base[0:2])), base[2:4], base[4:6], base[6:8], base[8:10], base[10:12])
+        else:
+            with open(path, "rb") as f:
+                DTO = 'DateTimeOriginal'
+                tags = EXIF.process_file(f, stop_tag=DTO)
+                dto = tags.get('EXIF %s' % (DTO))
+                if dto:
+                    ret = string.splitfields(str(dto).replace(' ', ':'), ':')
     return ret
 
 def file_length(fname):
     return None if not os.path.isfile(fname) else os.stat(fname)[ST_SIZE]
 
 class Importer(Thread):
-    def __init__(self, frame, source_dir, opts):
+    def __init__(self, frame, source_dirs, opts):
         Thread.__init__(self)
         self.interrupt = Event()
         self.frame = frame
         self.opts = opts
-        self.source_dir = source_dir
+        self.source_dirs = source_dirs
         self.dest_dirs = parse_dest_dirs(opts.dest_dirs)
+        self.__msg("%sImporting photos from %s" % (("" if self.dest_dirs else "Not "), ", ".join(self.source_dirs)))
         if self.dest_dirs:
-            self.__msg("Importing photos from %s" % (self.source_dir,))
             self.start()
-        else:
-            self.__msg("Not Importing photos from %s" % (self.source_dir,))
 
     def __msg(self, s, min_verbosity = 1):
         try:
@@ -133,29 +136,31 @@ class Importer(Thread):
         try:
             self.runner()
         except Exception, e:
-            pass # print "Exception %s" % (str(e),)
+            print "Exception %s" % (str(e),)
 
     def runner(self):
         skip_dirs = ['Originals', '.picasaoriginals']
-        suffixes = ['.jpg', '.jpeg', '.mov']
+        suffixes = ['.jpg', '.jpeg', '.mov', '.3gp']
         image_details = []
         images = {}
         # First find all the image files
         self.__progress(0)
-        for dirpath, dirnames, filenames in os.walk(self.source_dir):
-            for fname in filenames:
-                self.__progress(1)
-                base, suff = os.path.splitext(fname)
-                if suff.lower() in suffixes:
-                    image_details.append((dirpath, base, suff, fname))
-            for dir in skip_dirs:
-                for idx in range(len(dirnames)):
-                    if dirnames[idx] == dir:
-                        self.__progress(2)
-                        self.__msg("Skipping dir %s" % (os.path.join(dirpath, dir),), 2)
-                        self.__progress(0)
-                        del dirnames[idx]
-                        break
+        for source_dir in self.source_dirs:
+            if os.path.isdir(source_dir):
+                for dirpath, dirnames, filenames in os.walk(source_dir):
+                    for fname in filenames:
+                        self.__progress(1)
+                        base, suff = os.path.splitext(fname)
+                        if suff.lower() in suffixes:
+                            image_details.append((dirpath, base, suff, fname))
+                    for dir in skip_dirs:
+                        for idx in range(len(dirnames)):
+                            if dirnames[idx] == dir:
+                                self.__progress(2)
+                                self.__msg("Skipping dir %s" % (os.path.join(dirpath, dir),), 2)
+                                self.__progress(0)
+                                del dirnames[idx]
+                                break
         self.__progress(2)
         # Now examine their EXIF data, if we can
         image_count = len(image_details)

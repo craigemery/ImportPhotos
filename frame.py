@@ -31,18 +31,18 @@ from threading import Lock
 
 class MyFrame(wx.Frame):
     """ We simply derive a new class of Frame. """
-    def __init__(self, parent, title, opts, source_dir):
+    def __init__(self, parent, title, opts, source_dirs):
         wx.Frame.__init__(self, parent, title=title, size=(800, 400))
         self.lock = Lock()
         self.opts = opts
-        self.source_dir = source_dir
+        self.source_dirs = source_dirs
         self.control = wx.TextCtrl(self, style=wx.TE_MULTILINE)
         self.control.SetEditable(False)
         self.Show(True)
         self.twiddle_next = 0
         self.twiddle_me = '|/-\\'
         self.twiddle_size = len(self.twiddle_me)
-        self.importer = Importer(self, self.source_dir, self.opts)
+        self.importer = Importer(self, self.source_dirs, self.opts)
         self.Bind(wx.EVT_CLOSE, self.onClose)
 
     def onClose(self, event):
@@ -89,7 +89,7 @@ def main():
     (options, args) = parser.parse_args()
     if len(args) > 0:
         app = wx.App(False)
-        frame = MyFrame(None, "Craig's Photo Importer", options, args[0])
+        frame = MyFrame(None, "Craig's Photo Importer", options, args)
         frame.Show(True)
         app.MainLoop()
 
