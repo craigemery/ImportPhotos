@@ -89,7 +89,7 @@ def main():
     (options, args) = parser.parse_args()
     if len(args) > 0:
         app = wx.App(False)
-        frame = MyFrame(None, "Craig's Photo Importer", options, args)
+        frame = MyFrame(None, "Craig's Media Importer", options, args)
         frame.Show(True)
         app.MainLoop()
 
