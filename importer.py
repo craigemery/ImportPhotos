@@ -39,11 +39,14 @@ import platform
 import ctypes
 import re
 import time
+import pickle
+
+is_windows = (platform.system() == 'Windows')
 
 def get_free_space(folder):
     """ Return folder/drive free space (in bytes)
     """
-    if platform.system() == 'Windows':
+    if is_windows:
         free_bytes = ctypes.c_ulonglong(0)
         ctypes.windll.kernel32.GetDiskFreeSpaceExW(ctypes.c_wchar_p(folder), None, None, ctypes.pointer(free_bytes))
         return free_bytes.value
@@ -107,6 +110,7 @@ class Importer(Thread):
         self.dest_dirs = parse_dest_dirs(opts.dest_dirs)
         self.photos = ['.jpg', '.jpeg']
         self.videos = ['.mov', '.3gp', '.mp4']
+        self.already_imported = self.__reminder()
         self.__msg("%sImporting media from %s" % (("" if self.dest_dirs else "Not "), ", ".join(self.source_dirs)))
         if self.dest_dirs:
             self.start()
@@ -169,6 +173,19 @@ class Importer(Thread):
         else:
             return "file (!)"
 
+    def __reminder(self):
+        self.handkerchief = os.path.join(os.path.dirname(__file__), '.already_imported')
+        if os.path.isfile(self.handkerchief):
+            with open(self.handkerchief, 'rb') as f:
+                return pickle.load(f)
+        return set()
+
+    def __remember(self, src):
+        if src not in self.already_imported:
+            self.already_imported.add(src)
+            with open(self.handkerchief, 'wb') as f:
+                pickle.dump(self.already_imported, f)
+
     def run(self):
         try:
             self.runner()
@@ -184,9 +201,13 @@ class Importer(Thread):
         self.__progress(0)
         for source_dir in self.source_dirs:
             if os.path.isdir(source_dir):
+                if is_windows and source_dir[-1] == ":":
+                    source_dir += "\\"
                 for dirpath, dirnames, filenames in os.walk(source_dir):
                     for fname in filenames:
                         self.__progress(1)
+                        if self.opts.skip_already_imported and os.path.join(dirpath, fname) in self.already_imported:
+                            continue
                         base, suff = os.path.splitext(fname)
                         if suff.lower() in suffixes:
                             image_details.append((dirpath, base, suff, fname))
@@ -202,7 +223,7 @@ class Importer(Thread):
         # Now examine their EXIF data, if we can
         image_count = len(image_details)
         date_count = 0
-        self.__msg("Found %s image%s, now getting shot date info" % (image_count, ("" if image_count == 1 else "s")))
+        self.__msg("Found %s file%s (Not already inspected), now getting shot date info" % (image_count, ("" if image_count == 1 else "s")))
         self.__progress(0)
         for dirpath, base, suff, fname in image_details:
             self.__progress(1)
@@ -216,7 +237,7 @@ class Importer(Thread):
                 images[key] = l
         self.__progress(2)
 
-        self.__msg("Found shot date info of %s image%s" % (date_count, ("" if date_count == 1 else "s")))
+        self.__msg("Found shot date info of %s file%s" % (date_count, ("" if date_count == 1 else "s")))
         keys = images.keys()
         keys.sort()
         n = 0
@@ -238,6 +259,7 @@ class Importer(Thread):
                     d = os.path.join(dest_dir, year, date_dir)
                     dest = os.path.join(d, fname)
                     src = os.path.join(dirpath, fname)
+                    self.__remember(src)
                     mention_dest = (" to %s" % (dest,)) if self.opts.verbosity > 1 else ""
                     dest_len = file_length(dest)
                     # If it's not there TO START WITH
