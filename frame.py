@@ -32,7 +32,7 @@ from threading import Lock
 class MyFrame(wx.Frame):
     """ We simply derive a new class of Frame. """
     def __init__(self, parent, title, opts, source_dirs):
-        wx.Frame.__init__(self, parent, title=title, size=(800, 400))
+        wx.Frame.__init__(self, parent, title=title, size=((800 if opts.verbosity < 2 else 1100), 400))
         self.lock = Lock()
         self.opts = opts
         self.source_dirs = source_dirs
