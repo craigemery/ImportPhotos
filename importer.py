@@ -100,6 +100,15 @@ Video_and_numbers = re.compile('^Video(?P<MM>\d{2})(?P<DD>\d{2})(?P<HH>\d{2})(?P
 def file_length(fname):
     return None if not os.path.isfile(fname) else os.stat(fname)[stat.ST_SIZE]
 
+def file_mtime(fname):
+    return None if not os.path.isfile(fname) else time.localtime(os.stat(fname)[stat.ST_MTIME])
+
+def file_DateTimeOriginal(fname):
+    with open(fname, "rb") as f:
+        DTO = 'DateTimeOriginal'
+        tags = EXIF.process_file(f, stop_tag=DTO)
+        return tags.get('EXIF %s' % (DTO))
+
 class Importer(Thread):
     def __init__(self, frame, source_dirs, opts):
         Thread.__init__(self)
@@ -123,22 +132,22 @@ class Importer(Thread):
         path = root + suff
         ret = None
         if os.path.isfile(path):
+            mtime = file_mtime(path)
             if lsuff in self.videos:
                 m = twelve_numbers.search(base)
                 if m:
-                    ret = (str(2000 + int(m.group('YY'))), m.group('MM'),  m.group('DD'),  m.group('HH'),  m.group('mm'),  m.group('SS'))
+                    ret = (2000 + int(m.group('YY')), int(m.group('MM')),  int(m.group('DD')))
                 else:
                     m = Video_and_numbers.search(base)
                     if m:
-                        YY = str(time.localtime(os.stat(path)[stat.ST_MTIME])[0])
-                        ret = (YY, m.group('MM'),  m.group('DD'),  m.group('HH'),  m.group('mm'), None)
+                        ret = (mtime.tm_year, int(m.group('MM')), int(m.group('DD')))
             else:
-                with open(path, "rb") as f:
-                    DTO = 'DateTimeOriginal'
-                    tags = EXIF.process_file(f, stop_tag=DTO)
-                    dto = tags.get('EXIF %s' % (DTO))
-                    if dto:
-                        ret = string.splitfields(str(dto).replace(' ', ':'), ':')
+                dto = file_DateTimeOriginal(path)
+                if dto:
+                    (YY, MM, DD, HH, mm, ss) = string.splitfields(str(dto).replace(' ', ':'), ':')
+                    ret = (int(YY), int(MM), int(DD))
+            if ret is None:
+                ret = (mtime.tm_year, mtime.tm_mon, mtime.tm_mday)
         return ret
 
     def __msg(self, s, min_verbosity = 1):
@@ -225,11 +234,9 @@ class Importer(Thread):
         self.__progress(0)
         for dirpath, base, suff, fname in media_details:
             self.__progress(1)
-            gd = self.get_date(dirpath, base, suff)
-            if gd:
+            date = self.get_date(dirpath, base, suff)
+            if date:
                 date_count += 1
-                (year, month, day, hour, min, sec) = gd
-                date = (year, month, day)
                 l = ret.get(date, [])
                 l.append([dirpath, fname])
                 ret[date] = l
@@ -245,9 +252,10 @@ class Importer(Thread):
         for date in dates:
             (year, month, day) = date
             files = media[date]
-            date_dir = '%s_%s_%s' % (year, month, day)
+            YY = '%02d' % year
+            date_dir = '%s_%02d_%02d' % (YY, month, day)
             for dest_dir in self.dest_dirs:
-                d = os.path.join(dest_dir, year, date_dir)
+                d = os.path.join(dest_dir, YY, date_dir)
                 if not os.path.isdir(d):
                     self.__dmsg("Creating directory %s" % (d,), 2)
                     if not self.opts.dry_run:
@@ -257,7 +265,7 @@ class Importer(Thread):
             for (dirpath, fname) in files:
                 n += 1
                 for dest_dir in self.dest_dirs:
-                    d = os.path.join(dest_dir, year, date_dir)
+                    d = os.path.join(dest_dir, YY, date_dir)
                     dest = os.path.join(d, fname)
                     src = os.path.join(dirpath, fname)
                     self.__remember(src)
