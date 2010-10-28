@@ -80,8 +80,8 @@ class MyFrame(wx.Frame):
 def main():
     from optparse import OptionParser
     parser = OptionParser()
-    parser.add_option("-s", "--skip-already-imported", default=False, action="store_true",
-                      dest="skip_already_imported", help="Skip any file that's been inspected before")
+    parser.add_option("-r", "--reinspect", default=True, action="store_false",
+                      dest="skip_already_imported", help="Re-inspect any file that's been inspected before")
     parser.add_option("-v", "--verbose", default=1, action="count",
                       dest="verbosity", help="Increase verbosity")
     parser.add_option("-n", "--nothing", default=False, action="store_true",
