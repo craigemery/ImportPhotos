@@ -166,6 +166,7 @@ class Importer(Thread):
 
     def __kind(self, fname):
         base, suff = os.path.splitext(fname)
+        suff = suff.lower()
         if suff in self.photos:
             return "photo"
         elif suff in self.videos:
@@ -186,18 +187,11 @@ class Importer(Thread):
             with open(self.handkerchief, 'wb') as f:
                 pickle.dump(self.already_imported, f)
 
-    def run(self):
-        try:
-            self.runner()
-        except Exception, e:
-            print "Exception %s" % (str(e),)
-
-    def runner(self):
+    def __find_media(self):
         skip_dirs = ['Originals', '.picasaoriginals']
         suffixes = self.photos + self.videos
-        image_details = []
-        images = {}
-        # First find all the image files
+        ret = []
+        # First find all the media files
         self.__progress(0)
         for source_dir in self.source_dirs:
             if os.path.isdir(source_dir):
@@ -210,7 +204,7 @@ class Importer(Thread):
                             continue
                         base, suff = os.path.splitext(fname)
                         if suff.lower() in suffixes:
-                            image_details.append((dirpath, base, suff, fname))
+                            ret.append((dirpath, base, suff, fname))
                     for dir in skip_dirs:
                         for idx in range(len(dirnames)):
                             if dirnames[idx] == dir:
@@ -220,30 +214,37 @@ class Importer(Thread):
                                 del dirnames[idx]
                                 break
         self.__progress(2)
+        return ret
+
+    def __examine_media(self, media_details):
         # Now examine their EXIF data, if we can
-        image_count = len(image_details)
+        media_count = len(media_details)
+        ret = {}
         date_count = 0
-        self.__msg("Found %s file%s (Not already inspected), now getting shot date info" % (image_count, ("" if image_count == 1 else "s")))
+        self.__msg("Found %s file%s (Not already inspected), now getting shot date info" % (media_count, ("" if media_count == 1 else "s")))
         self.__progress(0)
-        for dirpath, base, suff, fname in image_details:
+        for dirpath, base, suff, fname in media_details:
             self.__progress(1)
             gd = self.get_date(dirpath, base, suff)
             if gd:
                 date_count += 1
                 (year, month, day, hour, min, sec) = gd
-                key = (year, month, day)
-                l = images.get(key, [])
+                date = (year, month, day)
+                l = ret.get(date, [])
                 l.append([dirpath, fname])
-                images[key] = l
+                ret[date] = l
         self.__progress(2)
+        return (ret, date_count)
 
+    def __runner(self):
+        (media, date_count) = self.__examine_media(self.__find_media())
         self.__msg("Found shot date info of %s file%s" % (date_count, ("" if date_count == 1 else "s")))
-        keys = images.keys()
-        keys.sort()
+        dates = media.keys()
+        dates.sort()
         n = 0
-        for key in keys:
-            (year, month, day) = key
-            files = images[key]
+        for date in dates:
+            (year, month, day) = date
+            files = media[date]
             date_dir = '%s_%s_%s' % (year, month, day)
             for dest_dir in self.dest_dirs:
                 d = os.path.join(dest_dir, year, date_dir)
@@ -290,5 +291,11 @@ class Importer(Thread):
                     else:
                         self.__msg("%s [file %d of %d] %s already imported%s" % (kind, n, date_count, src, mention_dest))
         self.__msg("All done!")
+
+    def run(self):
+        try:
+            self.__runner()
+        except Exception, e:
+            print "Exception %s" % (str(e),)
 
 #vim:sw=4:ts=4
