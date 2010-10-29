@@ -97,19 +97,51 @@ twelve_numbers = re.compile('^(?P<YY>\d{2})(?P<MM>\d{2})(?P<DD>\d{2})(?P<HH>\d{2
 # Video12141552.3gp
 Video_and_numbers = re.compile('^Video(?P<MM>\d{2})(?P<DD>\d{2})(?P<HH>\d{2})(?P<mm>\d{2})$')
 
-def file_length(fname):
-    return None if not os.path.isfile(fname) else os.stat(fname)[stat.ST_SIZE]
+class FileMetadata:
+    DTO = 'DateTimeOriginal'
 
-def file_mtime(fname):
-    return None if not os.path.isfile(fname) else time.localtime(os.stat(fname)[stat.ST_MTIME])
+    def __init__(self, fname):
+        self.fname = fname
+        self.__isfile()
+        self.stat = self.mtime = self.exif_tags = None
 
-def file_DateTimeOriginal(fname):
-    with open(fname, "rb") as f:
-        DTO = 'DateTimeOriginal'
-        tags = EXIF.process_file(f, stop_tag=DTO)
-        return tags.get('EXIF %s' % (DTO))
+    def __isfile(self):
+        self.is_file = None if self.fname is None else os.path.isfile(self.fname)
+
+    def __stat(self, reload):
+        if reload:
+            if not self.is_file:
+                self.__isfile()
+            self.stat = None
+        if self.is_file and self.stat is None:
+            self.stat = os.stat(self.fname)
+
+    def read_exif(self, stop_at = None):
+        if self.exif_tags is None and self.fname is not None:
+            with open(self.fname, "rb") as f:
+                self.exif_tags = EXIF.process_file(f, stop_tag=stop_at)
+
+    def size(self, reload = False):
+        self.__stat(reload)
+        return None if self.stat is None else self.stat[stat.ST_SIZE]
+
+    def mdate(self, reload = False):
+        self.__stat(reload)
+        if self.stat is not None:
+            if self.mtime is None:
+                self.mtime = time.localtime(self.stat[stat.ST_MTIME])
+            if self.mtime is not None:
+                return (self.mtime.tm_year, self.mtime.tm_mon, self.mtime.tm_mday)
+
+    def dateTimeOriginal(self):
+        self.read_exif(stop_at = FileMetadata.DTO)
+        return None if self.exif_tags is None else self.exif_tags.get('EXIF %s' % (FileMetadata.DTO))
 
 class Importer(Thread):
+    photos = ['.jpg', '.jpeg']
+    videos = ['.mov', '.3gp', '.mp4']
+    skip_dirs = ['Originals', '.picasaoriginals']
+
     def __init__(self, frame, source_dirs, opts):
         Thread.__init__(self)
         self.interrupt = Event()
@@ -117,8 +149,6 @@ class Importer(Thread):
         self.opts = opts
         self.source_dirs = source_dirs
         self.dest_dirs = parse_dest_dirs(opts.dest_dirs)
-        self.photos = ['.jpg', '.jpeg']
-        self.videos = ['.mov', '.3gp', '.mp4']
         self.already_imported = self.__reminder()
         self.__msg("%sImporting media from %s" % (("" if self.dest_dirs else "Not "), ", ".join(self.source_dirs)))
         if self.dest_dirs:
@@ -131,23 +161,24 @@ class Importer(Thread):
             suff = '.JPG'
         path = root + suff
         ret = None
-        if os.path.isfile(path):
-            mtime = file_mtime(path)
-            if lsuff in self.videos:
+        path_md = FileMetadata(path)
+        if path_md.is_file:
+            mdate = path_md.mdate()
+            if lsuff in Importer.videos:
                 m = twelve_numbers.search(base)
                 if m:
                     ret = (2000 + int(m.group('YY')), int(m.group('MM')),  int(m.group('DD')))
                 else:
                     m = Video_and_numbers.search(base)
                     if m:
-                        ret = (mtime.tm_year, int(m.group('MM')), int(m.group('DD')))
+                        ret = (mdate[0], int(m.group('MM')), int(m.group('DD')))
             else:
-                dto = file_DateTimeOriginal(path)
+                dto = path_md.dateTimeOriginal()
                 if dto:
                     (YY, MM, DD, HH, mm, ss) = string.splitfields(str(dto).replace(' ', ':'), ':')
                     ret = (int(YY), int(MM), int(DD))
             if ret is None:
-                ret = (mtime.tm_year, mtime.tm_mon, mtime.tm_mday)
+                ret = mdate
         return ret
 
     def __msg(self, s, min_verbosity = 1):
@@ -176,9 +207,9 @@ class Importer(Thread):
     def __kind(self, fname):
         base, suff = os.path.splitext(fname)
         suff = suff.lower()
-        if suff in self.photos:
+        if suff in Importer.photos:
             return "photo"
-        elif suff in self.videos:
+        elif suff in Importer.videos:
             return "video"
         else:
             return "file (!)"
@@ -197,8 +228,7 @@ class Importer(Thread):
                 pickle.dump(self.already_imported, f)
 
     def __find_media(self):
-        skip_dirs = ['Originals', '.picasaoriginals']
-        suffixes = self.photos + self.videos
+        suffixes = Importer.photos + Importer.videos
         ret = []
         # First find all the media files
         self.__progress(0)
@@ -214,7 +244,7 @@ class Importer(Thread):
                         base, suff = os.path.splitext(fname)
                         if suff.lower() in suffixes:
                             ret.append((dirpath, base, suff, fname))
-                    for dir in skip_dirs:
+                    for dir in Importer.skip_dirs:
                         for idx in range(len(dirnames)):
                             if dirnames[idx] == dir:
                                 self.__progress(2)
@@ -268,20 +298,19 @@ class Importer(Thread):
                     d = os.path.join(dest_dir, YY, date_dir)
                     dest = os.path.join(d, fname)
                     src = os.path.join(dirpath, fname)
-                    self.__remember(src)
                     mention_dest = (" to %s" % (dest,)) if self.opts.verbosity > 1 else ""
-                    dest_len = file_length(dest)
+                    dest_md = FileMetadata(dest)
+                    dest_len = dest_md.size()
                     # If it's not there TO START WITH
                     kind = self.__kind(src)
                     if dest_len is None:
                         self.__dmsg("Importing %s [file %d of %d] %s%s" % (kind, n, date_count, src, mention_dest))
                         if not self.opts.dry_run:
-                            src_len = file_length(src)
+                            src_len = FileMetadata(src).size()
                             limit = 0
                             while src_len != dest_len:
                                 if limit > 10: # completely arbitrary re-try limit
-                                    self.__msg("Failed to copy %s too many times" % (src),)
-                                    raise UserWarning("Re-try excessive")
+                                    raise UserWarning("Failed to copy %s too many times" % (src,))
                                 # First entry to this loop, the dest is missing
                                 # But when we loop, it'll be present and unequal to source
                                 if dest_len is not None:
@@ -289,13 +318,13 @@ class Importer(Thread):
                                     os.unlink(dest)
                                 # Now check there's enough free space
                                 if src_len >= get_free_space(d):
-                                    self.__msg("Ran out of disk space")
-                                    raise UserWarning("Not enough free space")
+                                    raise UserWarning("Ran out of disk space")
                                 # Attempt the copy
                                 shutil.copy2(src, dest)
                                 # Re-get the length
-                                dest_len = file_length(dest)
+                                dest_len = dest_md.size(True)
                                 limit += 1
+                            self.__remember(src)
                     else:
                         self.__msg("%s [file %d of %d] %s already imported%s" % (kind, n, date_count, src, mention_dest))
         self.__msg("All done!")
