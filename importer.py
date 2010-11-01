@@ -28,31 +28,14 @@ from __future__ import with_statement
 __init__ = ['Importer']
 
 import os
-import stat
 import string
 import shutil
 import wx
 from threading import Thread, Event
-import EXIF
 import _winreg
-import platform
-import ctypes
 import re
-import time
 import pickle
-
-is_windows = (platform.system() == 'Windows')
-
-def get_free_space(folder):
-    """ Return folder/drive free space (in bytes)
-    """
-    if is_windows:
-        free_bytes = ctypes.c_ulonglong(0)
-        ctypes.windll.kernel32.GetDiskFreeSpaceExW(ctypes.c_wchar_p(folder), None, None, ctypes.pointer(free_bytes))
-        return free_bytes.value
-    else:
-        s = os.statvfs(folder)
-        return s.f_bfree * s.f_bsize
+from path_metadata import PathMetadata
 
 def user_shell_folders():
     ret = {}
@@ -97,46 +80,6 @@ twelve_numbers = re.compile('^(?P<YY>\d{2})(?P<MM>\d{2})(?P<DD>\d{2})(?P<HH>\d{2
 # Video12141552.3gp
 Video_and_numbers = re.compile('^Video(?P<MM>\d{2})(?P<DD>\d{2})(?P<HH>\d{2})(?P<mm>\d{2})$')
 
-class FileMetadata:
-    DTO = 'DateTimeOriginal'
-
-    def __init__(self, fname):
-        self.fname = fname
-        self.__isfile()
-        self.stat = self.mtime = self.exif_tags = None
-
-    def __isfile(self):
-        self.is_file = None if self.fname is None else os.path.isfile(self.fname)
-
-    def __stat(self, reload):
-        if reload:
-            if not self.is_file:
-                self.__isfile()
-            self.stat = None
-        if self.is_file and self.stat is None:
-            self.stat = os.stat(self.fname)
-
-    def read_exif(self, stop_at = None):
-        if self.exif_tags is None and self.fname is not None:
-            with open(self.fname, "rb") as f:
-                self.exif_tags = EXIF.process_file(f, stop_tag=stop_at)
-
-    def size(self, reload = False):
-        self.__stat(reload)
-        return None if self.stat is None else self.stat[stat.ST_SIZE]
-
-    def mdate(self, reload = False):
-        self.__stat(reload)
-        if self.stat is not None:
-            if self.mtime is None:
-                self.mtime = time.localtime(self.stat[stat.ST_MTIME])
-            if self.mtime is not None:
-                return (self.mtime.tm_year, self.mtime.tm_mon, self.mtime.tm_mday)
-
-    def dateTimeOriginal(self):
-        self.read_exif(stop_at = FileMetadata.DTO)
-        return None if self.exif_tags is None else self.exif_tags.get('EXIF %s' % (FileMetadata.DTO))
-
 class Importer(Thread):
     photos = ['.jpg', '.jpeg']
     videos = ['.mov', '.3gp', '.mp4']
@@ -161,7 +104,7 @@ class Importer(Thread):
             suff = '.JPG'
         path = root + suff
         ret = None
-        path_md = FileMetadata(path)
+        path_md = PathMetadata(path)
         if path_md.is_file:
             mdate = path_md.mdate()
             if lsuff in Importer.videos:
@@ -234,7 +177,7 @@ class Importer(Thread):
         self.__progress(0)
         for source_dir in self.source_dirs:
             if os.path.isdir(source_dir):
-                if is_windows and source_dir[-1] == ":":
+                if PathMetadata.IS_WINDOWS and source_dir[-1] == ":":
                     source_dir += "\\"
                 for dirpath, dirnames, filenames in os.walk(source_dir):
                     for fname in filenames:
@@ -299,14 +242,14 @@ class Importer(Thread):
                     dest = os.path.join(d, fname)
                     src = os.path.join(dirpath, fname)
                     mention_dest = (" to %s" % (dest,)) if self.opts.verbosity > 1 else ""
-                    dest_md = FileMetadata(dest)
+                    dest_md = PathMetadata(dest)
                     dest_len = dest_md.size()
                     # If it's not there TO START WITH
                     kind = self.__kind(src)
                     if dest_len is None:
                         self.__dmsg("Importing %s [file %d of %d] %s%s" % (kind, n, date_count, src, mention_dest))
                         if not self.opts.dry_run:
-                            src_len = FileMetadata(src).size()
+                            src_len = PathMetadata(src).size()
                             limit = 0
                             while src_len != dest_len:
                                 if limit > 10: # completely arbitrary re-try limit
@@ -317,7 +260,7 @@ class Importer(Thread):
                                     # So delete the fragment
                                     os.unlink(dest)
                                 # Now check there's enough free space
-                                if src_len >= get_free_space(d):
+                                if src_len >= PathMetadata(d).get_free_space():
                                     raise UserWarning("Ran out of disk space")
                                 # Attempt the copy
                                 shutil.copy2(src, dest)
