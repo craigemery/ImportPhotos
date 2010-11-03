@@ -36,45 +36,7 @@ import _winreg
 import re
 import pickle
 from path_metadata import PathMetadata
-
-def user_shell_folders():
-    ret = {}
-    key = hive = None
-    try:
-        hive = _winreg.ConnectRegistry(None, _winreg.HKEY_CURRENT_USER)
-        key = _winreg.OpenKey(hive, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders")
-        for i in range(_winreg.QueryInfoKey(key)[1]):
-            name, value, val_type = _winreg.EnumValue(key, i)
-            ret[name] = value
-    except WindowsError:
-        pass
-    finally:
-        if key:
-            _winreg.CloseKey(key)
-        if hive:
-            _winreg.CloseKey(hive)
-    return ret
-
-USF = user_shell_folders()
-
-def get_shell_dir(d):
-    ret = USF.get(d, None)
-    if not ret: # Not sure we need this
-        ret = USF.get("My %s" % (d,), None)
-    return ret
-
-def parse_dest_dirs(l):
-    ret = []
-    for d in l:
-        head = "<shell:"
-        try:
-            if d.index(head) == 0 and d[-1] == ">":
-                d = get_shell_dir(d[len(head):-1])
-        except:
-            pass
-        if d and os.path.isdir(d):
-            ret.append(d)
-    return ret
+from ShellFolders import parse_dest_dirs
 
 twelve_numbers = re.compile('^(?P<YY>\d{2})(?P<MM>\d{2})(?P<DD>\d{2})(?P<HH>\d{2})(?P<mm>\d{2})(?P<SS>\d{2})$')
 # Video12141552.3gp
