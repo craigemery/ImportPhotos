@@ -37,6 +37,7 @@ import re
 import pickle
 from path_metadata import PathMetadata
 from ShellFolders import parse_dest_dirs
+import time
 
 twelve_numbers = re.compile('^(?P<YY>\d{2})(?P<MM>\d{2})(?P<DD>\d{2})(?P<HH>\d{2})(?P<mm>\d{2})(?P<SS>\d{2})$')
 # Video12141552.3gp
@@ -49,6 +50,7 @@ class Importer(Thread):
 
     def __init__(self, frame, source_dirs, opts):
         Thread.__init__(self)
+        self.started_at = time.time()
         self.interrupt = Event()
         self.frame = frame
         self.opts = opts
@@ -126,9 +128,9 @@ class Importer(Thread):
                 return pickle.load(f)
         return set()
 
-    def __remember(self, src):
-        if src not in self.already_imported:
-            self.already_imported.add(src)
+    def __remember(self, hexdigest):
+        if hexdigest not in self.already_imported:
+            self.already_imported.add(hexdigest)
             with open(self.handkerchief, 'wb') as f:
                 pickle.dump(self.already_imported, f)
 
@@ -144,11 +146,14 @@ class Importer(Thread):
                 for dirpath, dirnames, filenames in os.walk(source_dir):
                     for fname in filenames:
                         self.__progress(1)
-                        if self.opts.skip_already_imported and os.path.join(dirpath, fname) in self.already_imported:
-                            continue
+                        md = PathMetadata(os.path.join(dirpath, fname))
+                        if self.opts.skip_already_imported:
+                            hexdigest = md.digest()
+                            if hexdigest in self.already_imported:
+                                continue
                         base, suff = os.path.splitext(fname)
                         if suff.lower() in suffixes:
-                            ret.append((dirpath, base, suff, fname))
+                            ret.append((dirpath, base, suff, fname, md))
                     for dir in Importer.skip_dirs:
                         for idx in range(len(dirnames)):
                             if dirnames[idx] == dir:
@@ -167,13 +172,13 @@ class Importer(Thread):
         date_count = 0
         self.__msg("Found %s file%s (Not already inspected), now getting shot date info" % (media_count, ("" if media_count == 1 else "s")))
         self.__progress(0)
-        for dirpath, base, suff, fname in media_details:
+        for dirpath, base, suff, fname, md in media_details:
             self.__progress(1)
             date = self.get_date(dirpath, base, suff)
             if date:
                 date_count += 1
                 l = ret.get(date, [])
-                l.append([dirpath, fname])
+                l.append((dirpath, fname, md))
                 ret[date] = l
         self.__progress(2)
         return (ret, date_count)
@@ -197,12 +202,13 @@ class Importer(Thread):
                         os.makedirs(d)
                 else:
                     self.__msg("Directory %s already exists" % (d,), 2)
-            for (dirpath, fname) in files:
+            for (dirpath, fname, md) in files:
                 n += 1
                 for dest_dir in self.dest_dirs:
                     d = os.path.join(dest_dir, YY, date_dir)
                     dest = os.path.join(d, fname)
                     src = os.path.join(dirpath, fname)
+                    src_md = md
                     mention_dest = (" to %s" % (dest,)) if self.opts.verbosity > 1 else ""
                     dest_md = PathMetadata(dest)
                     dest_len = dest_md.size()
@@ -211,7 +217,7 @@ class Importer(Thread):
                     if dest_len is None:
                         self.__dmsg("Importing %s [file %d of %d] %s%s" % (kind, n, date_count, src, mention_dest))
                         if not self.opts.dry_run:
-                            src_len = PathMetadata(src).size()
+                            src_len = src_md.size()
                             limit = 0
                             while src_len != dest_len:
                                 if limit > 10: # completely arbitrary re-try limit
@@ -229,10 +235,13 @@ class Importer(Thread):
                                 # Re-get the length
                                 dest_len = dest_md.size(True)
                                 limit += 1
-                            self.__remember(src)
+                            self.__remember(src_md.digest())
                     else:
                         self.__msg("%s [file %d of %d] %s already imported%s" % (kind, n, date_count, src, mention_dest))
-        self.__msg("All done!")
+                        if not self.opts.dry_run:
+                            self.__remember(src_md.digest())
+        tdelta = time.time() - self.started_at
+        self.__msg("All done in %.01f second%s!" % (tdelta, "" if tdelta == 1 else "s"))
 
     def run(self):
         try:
