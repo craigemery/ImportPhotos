@@ -33,14 +33,16 @@ import platform
 import time
 import EXIF
 import ctypes
+import hashlib
 
 class PathMetadata:
     IS_WINDOWS = (platform.system() == 'Windows')
     DTO = 'DateTimeOriginal'
+    READ_CAP_FOR_DIGEST = 1024 * 1024
 
     def __init__(self, path):
         self.path = path
-        self.is_dir = self.is_file = self.stat = self.mtime = self.exif_tags = None
+        self.hexdigest = self.is_dir = self.is_file = self.stat = self.mtime = self.exif_tags = None
         self.__isreadable()
 
     def __isreadable(self):
@@ -90,5 +92,17 @@ class PathMetadata:
         else:
             s = os.statvfs(folder)
             return s.f_bfree * s.f_bsize
+
+    def __read_hexdigest(self, reload = False):
+        if self.is_file:
+            if reload or self.hexdigest is None:
+                m = hashlib.sha1()
+                with open(self.path, 'rb') as f:
+                    m.update(f.read(PathMetadata.READ_CAP_FOR_DIGEST))
+                self.hexdigest = m.hexdigest()
+
+    def digest(self, reload = False):
+        self.__read_hexdigest(reload)
+        return self.hexdigest
 
 #vim:sw=4:ts=4
