@@ -48,16 +48,22 @@ class Importer(Thread):
     videos = ['.mov', '.3gp', '.mp4']
     skip_dirs = ['Originals', '.picasaoriginals']
 
-    def __init__(self, frame, source_dirs, opts):
+    def __init__(self, frame, sources, opts):
         Thread.__init__(self)
         self.started_at = time.time()
         self.interrupt = Event()
         self.frame = frame
         self.opts = opts
-        self.source_dirs = source_dirs
+        self.source_dirs = []
+        self.source_files = []
+        for s in sources:
+            if os.path.isdir(s):
+                self.source_dirs.append(s)
+            elif os.path.isfile(s):
+                self.source_files.append(os.path.abspath(s))
         self.dest_dirs = parse_dest_dirs(opts.dest_dirs)
         self.already_imported = self.__reminder()
-        self.__msg("%sImporting media from %s" % (("" if self.dest_dirs else "Not "), ", ".join(self.source_dirs)))
+        self.__msg("%sImporting media from %s" % (("" if self.dest_dirs else "Not "), ", ".join(self.source_dirs + self.source_files)))
         if self.dest_dirs:
             self.start()
 
@@ -139,6 +145,17 @@ class Importer(Thread):
         ret = []
         # First find all the media files
         self.__progress(0)
+        for path in self.source_files:
+            dirpath, fname = os.path.split(path)
+            self.__progress(1)
+            md = PathMetadata(path)
+            if self.opts.skip_already_imported:
+                hexdigest = md.digest()
+                if hexdigest in self.already_imported:
+                    continue
+            base, suff = os.path.splitext(fname)
+            if suff.lower() in suffixes:
+                ret.append((dirpath, base, suff, fname, md))
         for source_dir in self.source_dirs:
             if os.path.isdir(source_dir):
                 if PathMetadata.IS_WINDOWS and source_dir[-1] == ":":
