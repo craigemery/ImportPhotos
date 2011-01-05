@@ -38,6 +38,7 @@ class MyFrame(wx.Frame):
         self.control = wx.TextCtrl(self, style=wx.TE_MULTILINE)
         self.control.SetEditable(False)
         self.Show(True)
+        self.twiddle_mode = 2
         self.twiddle_next = 0
         self.twiddle_me = '|/-\\'
         self.twiddle_size = len(self.twiddle_me)
@@ -57,10 +58,18 @@ class MyFrame(wx.Frame):
 
     def logger(self, s):
         # print s
+        if self.twiddle_mode != 2:
+            re_twiddle = True
+            self.twiddle(2)
+        else:
+            re_twiddle = False
         self.__append_text("%s\n" % (s,))
+        if re_twiddle:
+            self.twiddle(0)
 
     def twiddle(self, mode):
         # Mode (0, 1, 2) == (start (add first twiddle), advance, erase)
+        self.twiddle_mode = mode
         if mode == 0:
             # append
             self.twiddle_next = 0
