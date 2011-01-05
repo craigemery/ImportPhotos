@@ -143,11 +143,14 @@ class Importer(Thread):
                 return pickle.load(f)
         return set()
 
+    def __tieknot(self):
+        with open(self.handkerchief, 'wb') as f:
+            pickle.dump(self.already_imported, f)
+
     def __remember(self, hexdigest):
         if hexdigest not in self.already_imported:
             self.already_imported.add(hexdigest)
-            with open(self.handkerchief, 'wb') as f:
-                pickle.dump(self.already_imported, f)
+            self.__tieknot()
 
     def __find_media(self):
         suffixes = Importer.photos + Importer.videos
@@ -162,7 +165,7 @@ class Importer(Thread):
             md = PathMetadata(path)
             if self.opts.skip_already_imported:
                 hexdigest = md.digest()
-                if hexdigest in self.already_imported:
+                if hexdigest in self.already_imported and self.opts.forget is False:
                     continue
             base, suff = os.path.splitext(fname)
             if suff.lower() in suffixes:
@@ -180,7 +183,7 @@ class Importer(Thread):
                     for fname in filenames:
                         self.__advance()
                         md = PathMetadata(os.path.join(dirpath, fname))
-                        if self.opts.skip_already_imported:
+                        if self.opts.skip_already_imported and self.opts.forget is False:
                             hexdigest = md.digest()
                             if hexdigest in self.already_imported:
                                 continue
@@ -225,52 +228,61 @@ class Importer(Thread):
             files = media[date]
             YY = '%02d' % year
             date_dir = '%s_%02d_%02d' % (YY, month, day)
-            for dest_dir in self.dest_dirs:
-                d = os.path.join(dest_dir, YY, date_dir)
-                if not os.path.isdir(d):
-                    self.__dmsg("Creating directory %s" % (d,), 2)
-                    if not self.opts.dry_run:
-                        os.makedirs(d)
-                else:
-                    self.__msg("Directory %s already exists" % (d,), 2)
-            for (dirpath, fname, md) in files:
-                n += 1
+
+            if self.opts.forget:
+                for (dirpath, fname, src_md) in files:
+                    hexdigest = src_md.digest()
+                    if hexdigest in self.already_imported:
+                        self.__dmsg("Forgetting %s" % (os.path.join(dirpath, fname),))
+                        if not self.opts.dry_run:
+                            self.already_imported.remove(hexdigest)
+                self.__tieknot()
+            else:
                 for dest_dir in self.dest_dirs:
                     d = os.path.join(dest_dir, YY, date_dir)
-                    dest = os.path.join(d, fname)
-                    src = os.path.join(dirpath, fname)
-                    src_md = md
-                    mention_dest = (" to %s" % (dest,)) if self.opts.verbosity > 1 else ""
-                    dest_md = PathMetadata(dest)
-                    dest_len = dest_md.size()
-                    # If it's not there TO START WITH
-                    kind = self.__kind(src)
-                    if dest_len is None:
-                        self.__dmsg("Importing %s [file %d of %d] %s%s" % (kind, n, date_count, src, mention_dest))
+                    if not os.path.isdir(d):
+                        self.__dmsg("Creating directory %s" % (d,), 2)
                         if not self.opts.dry_run:
-                            src_len = src_md.size()
-                            limit = 0
-                            while src_len != dest_len:
-                                if limit > 10: # completely arbitrary re-try limit
-                                    raise UserWarning("Failed to copy %s too many times" % (src,))
-                                # First entry to this loop, the dest is missing
-                                # But when we loop, it'll be present and unequal to source
-                                if dest_len is not None:
-                                    # So delete the fragment
-                                    os.unlink(dest)
-                                # Now check there's enough free space
-                                if src_len >= PathMetadata(d).get_free_space():
-                                    raise UserWarning("Ran out of disk space")
-                                # Attempt the copy
-                                shutil.copy2(src, dest)
-                                # Re-get the length
-                                dest_len = dest_md.size(True)
-                                limit += 1
-                            self.__remember(src_md.digest())
+                            os.makedirs(d)
                     else:
-                        self.__msg("%s [file %d of %d] %s already imported%s" % (kind, n, date_count, src, mention_dest))
-                        if not self.opts.dry_run:
-                            self.__remember(src_md.digest())
+                        self.__msg("Directory %s already exists" % (d,), 2)
+                for (dirpath, fname, src_md) in files:
+                    n += 1
+                    for dest_dir in self.dest_dirs:
+                        d = os.path.join(dest_dir, YY, date_dir)
+                        dest = os.path.join(d, fname)
+                        src = os.path.join(dirpath, fname)
+                        mention_dest = (" to %s" % (dest,)) if self.opts.verbosity > 1 else ""
+                        dest_md = PathMetadata(dest)
+                        dest_len = dest_md.size()
+                        # If it's not there TO START WITH
+                        kind = self.__kind(src)
+                        if dest_len is None:
+                            self.__dmsg("Importing %s [file %d of %d] %s%s" % (kind, n, date_count, src, mention_dest))
+                            if not self.opts.dry_run:
+                                src_len = src_md.size()
+                                limit = 0
+                                while src_len != dest_len:
+                                    if limit > 10: # completely arbitrary re-try limit
+                                        raise UserWarning("Failed to copy %s too many times" % (src,))
+                                    # First entry to this loop, the dest is missing
+                                    # But when we loop, it'll be present and unequal to source
+                                    if dest_len is not None:
+                                        # So delete the fragment
+                                        os.unlink(dest)
+                                    # Now check there's enough free space
+                                    if src_len >= PathMetadata(d).get_free_space():
+                                        raise UserWarning("Ran out of disk space")
+                                    # Attempt the copy
+                                    shutil.copy2(src, dest)
+                                    # Re-get the length
+                                    dest_len = dest_md.size(True)
+                                    limit += 1
+                                self.__remember(src_md.digest())
+                        else:
+                            self.__msg("%s [file %d of %d] %s already imported%s" % (kind, n, date_count, src, mention_dest))
+                            if not self.opts.dry_run:
+                                self.__remember(src_md.digest())
         tdelta = time.time() - self.started_at
         self.__msg("All done in %.01f second%s!" % (tdelta, "" if tdelta == 1 else "s"))
 

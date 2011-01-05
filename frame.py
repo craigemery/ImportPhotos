@@ -96,6 +96,8 @@ def main():
                       dest="dry_run", help="Don't do anything, do a dry run")
     parser.add_option("-d", "--dest", default=["<shell:Pictures>"], action="append",
                       dest="dest_dirs", help="Destination")
+    parser.add_option("-f", "--forget", default=False, action="store_true",
+                      dest="forget", help="Do no scanning, just forget anything about these sources")
     (options, sources) = parser.parse_args()
     if len(sources) > 0:
         app = wx.App(False)
