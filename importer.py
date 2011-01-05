@@ -46,7 +46,7 @@ Video_and_numbers = re.compile('^Video(?P<MM>\d{2})(?P<DD>\d{2})(?P<HH>\d{2})(?P
 class Importer(Thread):
     photos = ['.jpg', '.jpeg']
     videos = ['.mov', '.3gp', '.mp4']
-    skip_dirs = ['Originals', '.picasaoriginals']
+    skip_dirs = ['Originals', '.picasaoriginals', 'Thumb']
 
     def __init__(self, frame, sources, opts):
         Thread.__init__(self)
@@ -108,10 +108,19 @@ class Importer(Thread):
         else:
             self.__msg(s, min_verbosity)
 
-    def __progress(self, mode):
+    def __twiddle(self, mode):
         self.__service_interrupt()
         if self.opts.verbosity > 1:
             wx.CallAfter(self.frame.twiddle, mode)
+
+    def __start(self):
+        self.__twiddle(0)
+
+    def __advance(self):
+        self.__twiddle(1)
+
+    def __complete(self):
+        self.__twiddle(2)
 
     def __service_interrupt(self):
         if self.interrupt.is_set():
@@ -144,10 +153,12 @@ class Importer(Thread):
         suffixes = Importer.photos + Importer.videos
         ret = []
         # First find all the media files
-        self.__progress(0)
+        self.__start()
+        if self.source_files:
+            self.__msg("Scanning supplied files")
         for path in self.source_files:
             dirpath, fname = os.path.split(path)
-            self.__progress(1)
+            self.__advance()
             md = PathMetadata(path)
             if self.opts.skip_already_imported:
                 hexdigest = md.digest()
@@ -156,13 +167,18 @@ class Importer(Thread):
             base, suff = os.path.splitext(fname)
             if suff.lower() in suffixes:
                 ret.append((dirpath, base, suff, fname, md))
+        if self.source_files:
+            self.__msg("Done scanning supplied files")
         for source_dir in self.source_dirs:
             if os.path.isdir(source_dir):
                 if PathMetadata.IS_WINDOWS and source_dir[-1] == ":":
                     source_dir += "\\"
                 for dirpath, dirnames, filenames in os.walk(source_dir):
+                    fcount = len(filenames)
+                    dcount = len(dirnames)
+                    self.__msg("Scanning directory %s (%d file%s & %d sub-director%s)" % (dirpath, fcount, ("" if fcount == 1 else "s"), dcount, ("y" if dcount == 1 else "ies"),), 2)
                     for fname in filenames:
-                        self.__progress(1)
+                        self.__advance()
                         md = PathMetadata(os.path.join(dirpath, fname))
                         if self.opts.skip_already_imported:
                             hexdigest = md.digest()
@@ -174,12 +190,10 @@ class Importer(Thread):
                     for dir in Importer.skip_dirs:
                         for idx in range(len(dirnames)):
                             if dirnames[idx] == dir:
-                                self.__progress(2)
                                 self.__msg("Skipping dir %s" % (os.path.join(dirpath, dir),), 2)
-                                self.__progress(0)
                                 del dirnames[idx]
                                 break
-        self.__progress(2)
+        self.__complete()
         return ret
 
     def __examine_media(self, media_details):
@@ -188,16 +202,16 @@ class Importer(Thread):
         ret = {}
         date_count = 0
         self.__msg("Found %s file%s (Not already inspected), now getting shot date info" % (media_count, ("" if media_count == 1 else "s")))
-        self.__progress(0)
+        self.__start()
         for dirpath, base, suff, fname, md in media_details:
-            self.__progress(1)
+            self.__advance()
             date = self.get_date(dirpath, base, suff)
             if date:
                 date_count += 1
                 l = ret.get(date, [])
                 l.append((dirpath, fname, md))
                 ret[date] = l
-        self.__progress(2)
+        self.__complete()
         return (ret, date_count)
 
     def __runner(self):
