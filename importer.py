@@ -46,7 +46,7 @@ Video_and_numbers = re.compile('^Video(?P<MM>\d{2})(?P<DD>\d{2})(?P<HH>\d{2})(?P
 class Importer(Thread):
     photos = ['.jpg', '.jpeg']
     videos = ['.mov', '.3gp', '.mp4']
-    skip_dirs = ['Originals', '.picasaoriginals', 'Thumb']
+    skip_dirs = ['Originals', 'Thumb', re.compile(r'^\..*')]
 
     def __init__(self, frame, sources, opts):
         Thread.__init__(self)
@@ -152,6 +152,12 @@ class Importer(Thread):
             self.already_imported.add(hexdigest)
             self.__tieknot()
 
+    def __dir_match(self, dir, m):
+        if isinstance(m, str):
+            return m == dir
+        else:
+            return m.match(dir)
+
     def __find_media(self):
         suffixes = Importer.photos + Importer.videos
         ret = []
@@ -190,10 +196,10 @@ class Importer(Thread):
                         base, suff = os.path.splitext(fname)
                         if suff.lower() in suffixes:
                             ret.append((dirpath, base, suff, fname, md))
-                    for dir in Importer.skip_dirs:
+                    for skip in Importer.skip_dirs:
                         for idx in range(len(dirnames)):
-                            if dirnames[idx] == dir:
-                                self.__msg("Skipping dir %s" % (os.path.join(dirpath, dir),), 2)
+                            if self.__dir_match(dirnames[idx], skip):
+                                self.__msg("Skipping dir %s" % (os.path.join(dirpath, dirnames[idx]),), 2)
                                 del dirnames[idx]
                                 break
         self.__complete()
