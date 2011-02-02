@@ -1,3 +1,5 @@
+#!/usr/bin/env python
+
 #Copyright (c) 2011 Norman Craig Emery
 #
 #Permission is hereby granted, free of charge, to any person
@@ -23,9 +25,10 @@
 
 import os
 import cPickle as pickle
+from __future__ import with_statement
 
 class Memory:
-    VERSION = 2
+    VERSION = 1
 
     def __init__(self):
         self.handkerchief = os.path.join(os.path.dirname(__file__), '.already_imported')
