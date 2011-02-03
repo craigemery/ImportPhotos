@@ -49,11 +49,10 @@ def idirs(dirs, visitor, skip_dirs):
                 for fname in filenames:
                     yield os.path.join(dirpath, fname)
                 for skip in skip_dirs:
-                    for idx in range(len(dirnames)):
+                    for idx in range(len(dirnames) -1, -1, -1):
                         if compare(dirnames[idx], skip):
                             if visitor:
                                 visitor("skip", (os.path.join(dirpath, dirnames[idx])))
                             del dirnames[idx]
-                            break
 
 #vim:sw=4:ts=4
